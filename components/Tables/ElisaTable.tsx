@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, Alert, Pressable, Text } from 'react-native';
+import { StyleSheet, Pressable, Text } from 'react-native';
 import { useRouter } from 'expo-router';
 
 import { ThemedView } from '@/components/ThemedView';
@@ -8,6 +8,7 @@ import { ThemedButton } from '../ThemedButton';
 import { TabBarIcon } from '@/components/ThemedIcon';
 
 import axiosInstance from '@/utils/axiosInstance';
+import { showError, showSuccessToast } from '@/utils/alertHelper';
 
 import { useSelector } from "@/store";
 
@@ -117,7 +118,7 @@ const ElisaDetailTable: React.FC<ELISAProps> = ({ editable }) => {
             }
         } catch (error) {
             console.error('Failed to delete item:', error);
-            Alert.alert('Error', 'Failed to delete ELISA item');
+            showError('Error', 'Failed to delete ELISA item');
         }
     };
 

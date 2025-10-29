@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
     StyleSheet,
-    ScrollView,
-    Alert
+    ScrollView
 } from 'react-native';
 import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
 
@@ -12,6 +11,7 @@ import { ThemedText } from '@/components/ThemedText';
 import { ThemedButton } from '@/components/ThemedButton';
 
 import axiosInstance from '@/utils/axiosInstance';
+import { showError, showSuccessToast } from '@/utils/alertHelper';
 
 import { IElisa } from '@/constants/Interfaces';
 import { DEFAULT_ELISA } from '@/constants/DefaultValues';
@@ -60,7 +60,7 @@ export default function ELISAItemScreen() {
 
         } catch (error) {
             console.error('Failed to load ELISA item:', error);
-            Alert.alert('Error', 'Failed to load ELISA data');
+            showError('Error', 'Failed to load ELISA data');
         } finally {
             setLoading(false);
         }
@@ -79,10 +79,11 @@ export default function ELISAItemScreen() {
             });
 
             // Navigate back to edit screen - data will be refreshed from database
+            showSuccessToast('ELISA data saved successfully!');
             router.navigate('/product/elisa/edit');
         } catch (error) {
             console.error('Fetch Error:', error);
-            Alert.alert('Error', 'Failed to save ELISA data');
+            showError('Error', 'Failed to save ELISA data');
         }
     };
 

@@ -5,7 +5,15 @@ import {
 import { ThemedText } from "./ThemedText";
 import { Ionicons } from '@expo/vector-icons';
 
-export function ThemedButton(props: any) {
+interface ThemedButtonProps {
+    text: string;
+    fullWidth?: boolean;
+    onPressEvent: () => void;
+    icon?: string;
+    style?: any;
+}
+
+export function ThemedButton(props: ThemedButtonProps) {
     const {
         text,
         fullWidth = false,

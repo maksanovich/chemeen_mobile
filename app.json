@@ -47,13 +47,10 @@
       "typedRoutes": true
     },
     "extra": {
-      "router": {
-        "origin": false
-      },
+      "router": {},
       "eas": {
-        "projectId": "78054752-52f0-4d76-9dc5-428032d51626"
+        "projectId": "58645252-b9aa-4a09-a92f-0ddff26653bc"
       }
-    },
-    "owner": "maksanovich"
+    }
   }
 }

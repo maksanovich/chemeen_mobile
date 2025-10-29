@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { TextInput, StyleSheet, Alert, TouchableOpacity } from 'react-native';
+import { TextInput, StyleSheet, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 
 import { ThemedView } from '@/components/ThemedView';
@@ -9,6 +9,13 @@ import { TabBarIcon } from '@/components/ThemedIcon';
 import { ThemedPicker } from '@/components/ThemedPicker';
 
 import axiosInstance from '@/utils/axiosInstance';
+import { 
+    showSuccessToast, 
+    showError, 
+    showWarning, 
+    showDateValidationError,
+    showInfo
+} from '@/utils/alertHelper';
 
 import { useSelector } from "@/store";
 import { ThemedDatePicker } from '../ThemedDatePicker';
@@ -39,12 +46,12 @@ const DEFAULT_BAR = {
     analysisDate: '',
     completionDate: '',
     totalPlateCnt: '',
-    ECFU: '',
-    SCFU: '',
-    salmone: '',
-    vibrioC: '',
-    vibrioP: '',
-    listeria: '',
+    ECFU: 'Nil',
+    SCFU: 'Nil',
+    salmone: 'Absent',
+    vibrioC: 'Absent',
+    vibrioP: 'Absent',
+    listeria: 'Absent',
 }
 
 const BARTable: React.FC<BARProps> = ({ editable }) => {
@@ -57,6 +64,7 @@ const BARTable: React.FC<BARProps> = ({ editable }) => {
     const [data, setData] = useState<any[]>([]);
     const [productCodeOptions, setProductCodeOptions] = useState<{[key: number]: any[]}>({});
     const [loading, setLoading] = useState<boolean>(false);
+    const [traceabilityData, setTraceabilityData] = useState<any[]>([]); // Store traceability data for date validation
 
     // Fetch BAR data from database when component mounts or PIId changes
     useEffect(() => {
@@ -67,6 +75,15 @@ const BARTable: React.FC<BARProps> = ({ editable }) => {
                     // Fetch existing BAR data
                     const barResponse = await axiosInstance.get(`product/bar/${selectedPI.PIId}`);
                     setItems(barResponse.data || []);
+                    
+                    // Fetch traceability data for date validation
+                    try {
+                        const traceResponse = await axiosInstance.get(`product/traceAbility?type=formatted&PIId=${selectedPI.PIId}`);
+                        setTraceabilityData(traceResponse.data || []);
+                    } catch (traceError) {
+                        console.log('No traceability data found for date validation');
+                        setTraceabilityData([]);
+                    }
                 } catch (error) {
                     console.error('Error fetching BAR data:', error);
                     setItems([]);
@@ -116,6 +133,75 @@ const BARTable: React.FC<BARProps> = ({ editable }) => {
         }
     };
 
+    // Function to validate Analysis Date against Production Date
+    const validateAnalysisDate = (code: string, analysisDate: string): { isValid: boolean; message: string } => {
+        if (!code || !analysisDate) {
+            return { isValid: true, message: '' }; // Allow empty values
+        }
+
+        // Find the corresponding traceability record for this code
+        const traceRecord = traceabilityData.find(trace => trace.code === code);
+        
+        if (!traceRecord || !traceRecord.productDate) {
+            return { isValid: true, message: '' }; // No traceability data found, allow
+        }
+
+        const productionDate = new Date(traceRecord.productDate);
+        const analysisDateObj = new Date(analysisDate);
+        
+        // Check if analysis date is before production date
+        if (analysisDateObj < productionDate) {
+            return {
+                isValid: false,
+                message: `❌ Analysis Date cannot be before Production Date\n\nCode: ${code}\nAnalysis: ${analysisDate}\nProduction: ${traceRecord.productDate}`
+            };
+        }
+
+        // Check if analysis date is more than 24 hours after production date
+        const timeDiff = analysisDateObj.getTime() - productionDate.getTime();
+        const hoursDiff = timeDiff / (1000 * 60 * 60);
+        
+        if (hoursDiff > 24) {
+            return {
+                isValid: false,
+                message: `⏰ Analysis Date must be within 24 hours\n\nCode: ${code}\nGap: ${Math.round(hoursDiff)} hours\nMax allowed: 24 hours`
+            };
+        }
+
+        return { isValid: true, message: '' };
+    };
+
+    // Function to validate Completion Date against Analysis Date
+    const validateCompletionDate = (analysisDate: string, completionDate: string): { isValid: boolean; message: string } => {
+        if (!analysisDate || !completionDate) {
+            return { isValid: true, message: '' }; // Allow empty values
+        }
+
+        const analysisDateObj = new Date(analysisDate);
+        const completionDateObj = new Date(completionDate);
+        
+        // Check if completion date is before analysis date
+        if (completionDateObj < analysisDateObj) {
+            return {
+                isValid: false,
+                message: `❌ Completion Date cannot be before Analysis Date\n\nAnalysis: ${analysisDate}\nCompletion: ${completionDate}`
+            };
+        }
+
+        // Check if completion date is more than 24 hours after analysis date
+        const timeDiff = completionDateObj.getTime() - analysisDateObj.getTime();
+        const hoursDiff = timeDiff / (1000 * 60 * 60);
+        
+        if (hoursDiff > 24) {
+            return {
+                isValid: false,
+                message: `⏰ Completion Date must be within 24 hours of Analysis Date\n\nAnalysis: ${analysisDate}\nCompletion: ${completionDate}\nGap: ${Math.round(hoursDiff)} hours\nMax allowed: 24 hours`
+            };
+        }
+
+        return { isValid: true, message: '' };
+    };
+
     const handleAdd = () => {
         setItems((prevItems) => [...prevItems, DEFAULT_BAR]);
     };
@@ -129,7 +215,7 @@ const BARTable: React.FC<BARProps> = ({ editable }) => {
                 await axiosInstance.delete(`product/bar/item/${itemToRemove.BARId}`);
             } catch (error) {
                 console.error('Error deleting BAR item:', error);
-                Alert.alert('Error', 'Failed to delete item from database');
+                showError('Error', 'Failed to delete item from database');
                 return; // Don't remove from UI if database deletion failed
             }
         }
@@ -153,6 +239,74 @@ const BARTable: React.FC<BARProps> = ({ editable }) => {
     }, [items]);
 
     const handleChange = async (value: string, index: number, field: keyof IBAR) => {
+        // Store the original item before any changes
+        const originalItem = { ...items[index] };
+        
+        // Check for duplicate codes when changing the code field
+        if (field === 'code' && value && value.trim() !== '') {
+            const duplicateIndex = items.findIndex((item, idx) => 
+                idx !== index && item.code && item.code.trim() === value.trim()
+            );
+            
+            if (duplicateIndex !== -1) {
+                showError(
+                    '❌ Duplicate Code Error',
+                    `Code "${value}" already exists in row ${duplicateIndex + 1}.\n\nEach code can only have one BAR record.`
+                );
+                
+                // Revert the code field to its original value to prevent UI update
+                const updatedItems = [...items];
+                updatedItems[index] = {
+                    ...updatedItems[index],
+                    [field]: originalItem[field], // Revert to original value
+                };
+                setItems(updatedItems); // Update state to revert UI
+                return; // Stop further processing
+            }
+        }
+
+        // Validate Analysis Date when it's being changed
+        if (field === 'analysisDate' && value) {
+            const currentItem = items[index];
+            const validation = validateAnalysisDate(currentItem.code, value);
+            
+            if (!validation.isValid) {
+                showError(
+                    '📅 Date Validation Error',
+                    validation.message
+                );
+                return; // Don't update the value
+            }
+        }
+
+        // Validate Completion Date when it's being changed
+        if (field === 'completionDate' && value) {
+            const currentItem = items[index];
+            const validation = validateCompletionDate(currentItem.analysisDate, value);
+            
+            if (!validation.isValid) {
+                // Extract details from the validation message for better formatting
+                const analysisDate = currentItem.analysisDate;
+                const completionDate = value;
+                const analysisDateObj = new Date(analysisDate);
+                const completionDateObj = new Date(completionDate);
+                const timeDiff = completionDateObj.getTime() - analysisDateObj.getTime();
+                const hoursDiff = Math.round(timeDiff / (1000 * 60 * 60));
+                
+                showDateValidationError(
+                    'Date Validation Error',
+                    '⏰ Completion Date must be within 24 hours of Analysis Date',
+                    {
+                        analysisDate: analysisDate,
+                        completionDate: completionDate,
+                        gap: `${hoursDiff} hours`,
+                        maxAllowed: '24 hours'
+                    }
+                );
+                return; // Don't update the value
+            }
+        }
+
         const updatedItems = [...items];
         updatedItems[index] = {
             ...updatedItems[index],
@@ -190,15 +344,63 @@ const BARTable: React.FC<BARProps> = ({ editable }) => {
     };
 
     const handleSave = async () => {
+        // Check for duplicate codes before saving
+        const codes = items.map(item => item.code).filter(code => code && code.trim() !== '');
+        const uniqueCodes = [...new Set(codes)];
+        
+        if (codes.length !== uniqueCodes.length) {
+            showError(
+                '❌ Duplicate Code Error',
+                'Cannot save: Duplicate codes found in the table.\n\nEach code can only have one BAR record.\n\nPlease remove or change duplicate codes before saving.'
+            );
+            return;
+        }
+
+        // Validate all Analysis Dates before saving
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            if (item.code && item.analysisDate) {
+                const validation = validateAnalysisDate(item.code, item.analysisDate);
+                if (!validation.isValid) {
+                    showError(
+                        'Date Validation Error',
+                        `Row ${i + 1}: ${validation.message}\n\nPlease correct the Analysis Date before saving.`
+                    );
+                    return;
+                }
+            }
+        }
+
+        // Validate all Completion Dates before saving
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            if (item.analysisDate && item.completionDate) {
+                const validation = validateCompletionDate(item.analysisDate, item.completionDate);
+                if (!validation.isValid) {
+                    const analysisDateObj = new Date(item.analysisDate);
+                    const completionDateObj = new Date(item.completionDate);
+                    const timeDiff = completionDateObj.getTime() - analysisDateObj.getTime();
+                    const hoursDiff = Math.round(timeDiff / (1000 * 60 * 60));
+                    
+                    showDateValidationError(
+                        'Date Validation Error',
+                        `Row ${i + 1}: ⏰ Completion Date must be within 24 hours of Analysis Date`,
+                        {
+                            analysisDate: item.analysisDate,
+                            completionDate: item.completionDate,
+                            gap: `${hoursDiff} hours`,
+                            maxAllowed: '24 hours'
+                        }
+                    );
+                    return;
+                }
+            }
+        }
+
         for (const item of items) {
             for (const key of Object.keys(item)) {
                 if (key != 'BARId' && item[key as keyof IBAR] === "") {
-                    Alert.alert('Notice', `Empty value found for ${key} in item with code: ${item.code}`, [
-                        {
-                            text: 'OK',
-                            onPress: () => console.log(`Empty value found for ${key} in item with code: ${item.code}`)
-                        },
-                    ]);
+                    showInfo('Notice', `Empty value found for ${key} in item with code: ${item.code}`);
                     return;
                 }
             }
@@ -216,10 +418,10 @@ const BARTable: React.FC<BARProps> = ({ editable }) => {
             const response = await axiosInstance.get(`product/bar/${selectedPI.PIId}`);
             setItems(response.data || []);
 
-            router.navigate('/product');
+            showSuccessToast('BAR data saved successfully!');
         } catch (error) {
             console.error('Save Error:', error);
-            Alert.alert('Error', 'Failed to save BAR data');
+            showError('Error', 'Failed to save BAR data');
         }
     };
 
@@ -236,7 +438,7 @@ const BARTable: React.FC<BARProps> = ({ editable }) => {
                 name={'code'}
                 selectedValue={item.code}
                 handleChange={(name: keyof IBAR, text: string) => handleChange(text, index, name)}
-                width={150}
+                width={180}
                 height={50}
                 enable={editable}
             />
@@ -328,17 +530,17 @@ const BARTable: React.FC<BARProps> = ({ editable }) => {
 
             <ThemedView style={styles.row}>
                 <ThemedText style={[styles.removeBtn, !editable && styles.hidden]}></ThemedText>
-                <ThemedText style={[styles.headerCell, { width: 150 }]}>Code</ThemedText>
+                <ThemedText style={[styles.headerCell, { width: 180 }]}>Code</ThemedText>
                 <ThemedText style={[styles.headerCell, { width: 150 }]}>Product Code</ThemedText>
                 <ThemedText style={styles.headerCell}>Analysis Date</ThemedText>
                 <ThemedText style={styles.headerCell}>Completion Date</ThemedText>
-                <ThemedText style={styles.headerCell}>Total Plate Count</ThemedText>
-                <ThemedText style={styles.headerCell}>E.coli C.F.U</ThemedText>
-                <ThemedText style={styles.headerCell}>S.aureus C.F.U</ThemedText>
-                <ThemedText style={styles.headerCell}>Salmon</ThemedText>
-                <ThemedText style={styles.headerCell}>Vibrio Cholera</ThemedText>
-                <ThemedText style={styles.headerCell}>Vibrio Parahae</ThemedText>
-                <ThemedText style={styles.headerCell}>Listeria monocy</ThemedText>
+                <ThemedText style={styles.headerCell}>Total Plate Count CFU/GM</ThemedText>
+                <ThemedText style={styles.headerCell}>E.coli C.F.U /gm</ThemedText>
+                <ThemedText style={styles.headerCell}>S. aureus C.F.U /gm</ThemedText>
+                <ThemedText style={styles.headerCell}>Salmonella / 25gm</ThemedText>
+                <ThemedText style={styles.headerCell}>Vibrio cholera / 25gm</ThemedText>
+                <ThemedText style={styles.headerCell}>Vibrio Parahaemolyticus / 25gm</ThemedText>
+                <ThemedText style={styles.headerCell}>Listeria monocytogenes / 25gm</ThemedText>
             </ThemedView>
 
             {loading ? (

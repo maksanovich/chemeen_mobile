@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import {
     StyleSheet,
-    ScrollView,
-    Alert
+    ScrollView
 } from 'react-native';
 import { useRouter } from 'expo-router';
 
@@ -13,6 +12,7 @@ import { ICompany } from '@/constants/Interfaces';
 import { DEFAULT_COMPANY } from '@/constants/DefaultValues';
 
 import axiosInstance from '@/utils/axiosInstance';
+import { showError, showSuccessToast } from '@/utils/alertHelper';
 
 import { useDispatch } from "@/store";
 import { addItem } from '@/store/reducers/master';
@@ -27,12 +27,12 @@ export default function CompanyAddScreen() {
         try {
             const response = await axiosInstance.post('master/company/', formData);
             dispatch(addItem(response.data));
-            Alert.alert('Success', 'Company created successfully!');
+            showSuccessToast('Company created successfully!');
             router.navigate('/master/company/list');
         } catch (error: any) {
             console.error('Fetch Error:', error);
             const errorMsg = error.response?.data?.message || 'Failed to create company';
-            Alert.alert('Error', errorMsg);
+            showError('Error', errorMsg);
         }
     }
 

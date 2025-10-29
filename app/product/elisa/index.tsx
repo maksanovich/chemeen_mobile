@@ -5,13 +5,16 @@ import {
     View,
     Text,
     TouchableOpacity,
-    Alert,
-    RefreshControl
+    RefreshControl,
+    Alert
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from "expo-sharing";
 import { useSelector } from '@/store';
 import axiosInstance from '@/utils/axiosInstance';
 import { useRouter } from 'expo-router';
+import { showSuccess, showError, showInfo, showConfirmation } from '@/utils/alertHelper';
 
 interface PDFFile {
     pdfId: number;
@@ -71,17 +74,57 @@ const ELISAScreen = () => {
     // Download PDF
     const handleDownload = async (pdfId: number, fileName: string) => {
         try {
-            Alert.alert('Download', `Downloading ${fileName}...`);
-            // TODO: Implement actual download logic
-            // const response = await axiosInstance.get(`product/elisaPDF/${pdfId}/download`);
-        } catch (error) {
-            Alert.alert('Error', 'Failed to download file');
+            showInfo('Download', `Downloading ${fileName}...`);
+            
+            const response = await axiosInstance.get(`product/elisaPDF/${pdfId}/download`, {
+                responseType: 'arraybuffer'
+            });
+            
+            const uint8Array = new Uint8Array(response.data);
+            const base64String = btoa(String.fromCharCode(...uint8Array));
+            
+            const fileUri = FileSystem.cacheDirectory + fileName;
+            
+            await FileSystem.writeAsStringAsync(fileUri, base64String, {
+                encoding: FileSystem.EncodingType.Base64,
+            });
+            
+            if (await Sharing.isAvailableAsync()) {
+                await Sharing.shareAsync(fileUri, {
+                    mimeType: "application/pdf",
+                    dialogTitle: `Save ${fileName}`,
+                    UTI: "com.adobe.pdf",
+                });
+            } else {
+                showError("Sharing not available", "Unable to save file on this device.");
+            }
+        } catch (error: any) {
+            console.error('Download error:', error);
+            
+            // Provide more specific error messages
+            let errorMessage = 'Failed to download file';
+            
+            if (error.response?.status === 404) {
+                if (error.response?.data?.message === 'PDF not found') {
+                    errorMessage = 'PDF file not found in database. It may have been deleted.';
+                } else if (error.response?.data?.message === 'File not found on server') {
+                    errorMessage = 'PDF file not found on server. Please contact support.';
+                } else {
+                    errorMessage = 'PDF file not found. Please refresh the list and try again.';
+                }
+            } else if (error.response?.status === 500) {
+                errorMessage = 'Server error occurred while downloading. Please try again later.';
+            } else if (error.code === 'NETWORK_ERROR') {
+                errorMessage = 'Network error. Please check your connection and try again.';
+            }
+            
+            showError('Download Error', errorMessage);
         }
     };
 
     // Delete PDF
     const handleDelete = (pdfId: number, fileName: string) => {
-        Alert.alert(
+        showConfirmation(
             'Delete File',
             `Are you sure you want to delete "${fileName}"?`,
             [
@@ -92,10 +135,9 @@ const ELISAScreen = () => {
                     onPress: async () => {
                         try {
                             await axiosInstance.delete(`product/elisaPDF/${pdfId}`);
-                            // Alert.alert('Success', 'File deleted');
                             fetchFiles();
                         } catch (error) {
-                            Alert.alert('Error', 'Failed to delete file');
+                            showError('Error', 'Failed to delete file');
                         }
                     }
                 }

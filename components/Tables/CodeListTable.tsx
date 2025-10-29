@@ -12,6 +12,7 @@ import { ThemedButton } from '@/components/ThemedButton';
 import { TabBarIcon } from '@/components/ThemedIcon';
 
 import axiosInstance from '@/utils/axiosInstance';
+import { showCartonMismatchWarning } from '@/utils/alertHelper';
 
 import { useSelector } from "@/store";
 
@@ -51,6 +52,9 @@ const CodeListTable: React.FC<CodeListProps> = ({ editable }) => {
                 try {
                     const response = await axiosInstance.get(`product/codeList/pi/${selectedPI.PIId}`);
                     setItems(response.data);
+                    
+                    // Validate carton totals against product requirements (show warning when opening page)
+                    await validateCartonTotals(response.data);
                 } catch (error) {
                     console.error('Error fetching code list data:', error);
                 } finally {
@@ -61,6 +65,40 @@ const CodeListTable: React.FC<CodeListProps> = ({ editable }) => {
 
         fetchCodeListData();
     }, [selectedPI.PIId]);
+
+    // Function to validate carton totals against product requirements
+    const validateCartonTotals = async (codeListData: any[]) => {
+        try {
+            // Get product requirements
+            const productResponse = await axiosInstance.get(`product/item/merged/${selectedPI.PIId}`);
+            const productData = productResponse.data;
+            
+            // Check for mismatches
+            const mismatches: string[] = [];
+            
+            productData.forEach((product: any) => {
+                const productTotal = parseFloat(product.totalCarton) || 0;
+                const codeListTotal = codeListData
+                    .filter((code: any) => code.ItemId === product.ItemId)
+                    .reduce((sum: number, code: any) => sum + (parseFloat(code.total) || 0), 0);
+                
+                if (Math.abs(productTotal - codeListTotal) > 0.01) {
+                    mismatches.push(
+                        `• ${product.productCode}\n  Required: ${productTotal} cartons\n  Available: ${codeListTotal} cartons`
+                    );
+                }
+            });
+            
+            if (mismatches.length > 0) {
+                showCartonMismatchWarning(
+                    mismatches,
+                    () => router.navigate('/product/codeList/edit')
+                );
+            }
+        } catch (error) {
+            console.error('Error validating carton totals:', error);
+        }
+    };
 
 
     const handleAdd = () => {

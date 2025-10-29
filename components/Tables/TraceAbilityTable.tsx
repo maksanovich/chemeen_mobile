@@ -7,7 +7,7 @@ import { ThemedText } from '@/components/ThemedText';
 import { ThemedButton } from '../ThemedButton';
 
 import axiosInstance from '@/utils/axiosInstance';
-import { showBalanceError, showSaveValidationError, showSuccessToast, showError, showWarning } from '@/utils/alertHelper';
+import { showBalanceError, showValidationError, showSuccessToast, showError, showWarning, showSimpleAlert } from '@/utils/alertHelper';
 
 import { useSelector } from "@/store";
 import { ThemedDatePicker } from '../ThemedDatePicker';
@@ -45,18 +45,18 @@ const TraceAbilityTable: React.FC<TraceAbilityProps> = ({ editable }) => {
                 setLoading(true);
                 try {
                     const response = await axiosInstance.get(`product/traceAbility?type=formatted&PIId=${selectedPI.PIId}`);
+                    console.log('Traceability data received:', response.data);
                     setItems(response.data);
-        } catch (error) {
+                } catch (error) {
                     console.error('Error fetching traceability data:', error);
                 } finally {
                     setLoading(false);
                 }
-        }
-    };
+            }
+        };
 
         fetchTraceAbilityData();
     }, [selectedPI.PIId]);
-
 
     const calculateFooterTotals = () => {
         if (items.length === 0) {
@@ -86,7 +86,7 @@ const TraceAbilityTable: React.FC<TraceAbilityProps> = ({ editable }) => {
 
     const handleChange = (value: string, index: number, field: keyof ITraceAbility) => {
         // Clean and validate numeric inputs
-        if (field === 'rawMaterialQty' || field === 'headlessQty' || field === 'usedCase') {
+        if (field === 'rawMaterialQty' || field === 'headlessQty' || field === 'usedCase' || field === 'ballanceCase') {
             // Remove any non-numeric characters except decimal point
             value = value.replace(/[^0-9.]/g, '');
             
@@ -94,6 +94,11 @@ const TraceAbilityTable: React.FC<TraceAbilityProps> = ({ editable }) => {
             const parts = value.split('.');
             if (parts.length > 2) {
                 value = parts[0] + '.' + parts.slice(1).join('');
+            }
+            
+            // Remove leading zeros (e.g., "023" -> "23", "0.5" -> "0.5")
+            if (value.length > 1 && value[0] === '0' && value[1] !== '.') {
+                value = value.replace(/^0+/, '') || '0';
             }
             
             // Handle empty string
@@ -129,13 +134,10 @@ const TraceAbilityTable: React.FC<TraceAbilityProps> = ({ editable }) => {
                     value = total.toString();
                 }
                 
-                const cappedUsedCase = parseFloat(value) || 0;
-                const balance = total - cappedUsedCase;
-                
+                // Note: Balance Case is now user-editable, no auto-calculation
                 updatedItems[index] = {
                     ...updatedItems[index],
                     [field]: value,
-                    ballanceCase: balance.toString(),
                 };
             } else {
                 updatedItems[index] = {
@@ -149,28 +151,54 @@ const TraceAbilityTable: React.FC<TraceAbilityProps> = ({ editable }) => {
     };
 
     const handleSave = async () => {
-        let bValid = false;
-        const negativeBalanceItems: string[] = [];
+        console.log('Save button clicked, validating items:', items);
         
-        for (let item of items) {
-            if (!item.productDate || !item.rawMaterialQty || !item.headlessQty) {
-                bValid = true;
+        // Check for missing dates specifically
+        const missingDates: string[] = [];
+        const missingFields: string[] = [];
+        
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            const rowNumber = i + 1;
+            
+            console.log(`Row ${rowNumber}:`, {
+                productDate: item.productDate,
+                rawMaterialQty: item.rawMaterialQty,
+                headlessQty: item.headlessQty,
+                code: item.code
+            });
+            
+            // Check for missing production date
+            if (!item.productDate || item.productDate === '' || item.productDate === 'Select Date') {
+                missingDates.push(`Row ${rowNumber} (Code: ${item.code})`);
             }
             
-            // Check for negative balance
-            const balance = parseFloat(item.ballanceCase) || 0;
-            if (balance < 0) {
-                negativeBalanceItems.push(`${item.productCode} (Code: ${item.code}): Balance = ${balance}`);
+            // Check for missing quantities (including 0 values)
+            const rawMaterialQty = parseFloat(item.rawMaterialQty) || 0;
+            const headlessQty = parseFloat(item.headlessQty) || 0;
+            
+            if (rawMaterialQty <= 0) {
+                missingFields.push(`Row ${rowNumber} (Code: ${item.code}): Raw Material Qty`);
+            }
+            
+            if (headlessQty <= 0) {
+                missingFields.push(`Row ${rowNumber} (Code: ${item.code}): Headless Qty`);
             }
         }
 
-        if (negativeBalanceItems.length > 0) {
-            showSaveValidationError(negativeBalanceItems);
+        console.log('Validation results:', { missingDates, missingFields });
+
+        // Show specific error for missing dates
+        if (missingDates.length > 0) {
+            console.log('Showing date error...');
+            showError('Date is not selected', `Please select Production Date for the following items:\n\n${missingDates.join('\n')}`);
             return;
         }
 
-        if (bValid) {
-            showWarning('Missing Required Fields', 'Please fill in Production Date, Raw Material Qty, and Headless Qty for all items.');
+        // Show error for missing quantities
+        if (missingFields.length > 0) {
+            console.log('Showing quantity error...');
+            showError('Missing Required Fields', `Please fill in the following fields:\n\n${missingFields.join('\n')}`);
             return;
         }
 
@@ -183,7 +211,7 @@ const TraceAbilityTable: React.FC<TraceAbilityProps> = ({ editable }) => {
                     productDate: rest.productDate || '',
                     rawMaterialQty: rest.rawMaterialQty || '0',
                     headlessQty: rest.headlessQty || '0',
-                    ballanceCase: rest.ballanceCase || '0',
+                    ballanceCase: rest.ballanceCase || '',
                     usedCase: rest.usedCase || '0',
                     beforeDate: rest.beforeDate || '',
                 };
@@ -209,8 +237,8 @@ const TraceAbilityTable: React.FC<TraceAbilityProps> = ({ editable }) => {
             const response = await axiosInstance.get(`product/traceAbility?type=formatted&PIId=${selectedPI.PIId}`);
             setItems(response.data);
 
+            console.log('Save successful, showing success message');
             showSuccessToast('Traceability data saved successfully!');
-            router.navigate('/product');
         } catch (error: any) {
             console.error('Fetch Error:', error);
             const errorMsg = error.response?.data?.details || error.response?.data?.error || 'Failed to save traceability data';
@@ -275,13 +303,16 @@ const TraceAbilityTable: React.FC<TraceAbilityProps> = ({ editable }) => {
             <TextInput
                 style={[
                     styles.cell, 
-                    styles.disabledCell,
-                    parseFloat(item.ballanceCase) < 0 && styles.negativeBalance
+                    editable && styles.editableCell
                 ]}
                 value={item.ballanceCase}
-                placeholder="0"
+                onChangeText={(text) => {
+                    console.log('Balance Case changed:', text, 'for item:', item.code);
+                    handleChange(text, index, 'ballanceCase');
+                }}
+                placeholder=""
                 keyboardType="numeric"
-                editable={false}
+                editable={editable}
             />
             <TextInput
                 style={styles.cell}
@@ -301,6 +332,9 @@ const TraceAbilityTable: React.FC<TraceAbilityProps> = ({ editable }) => {
     return (
         <ThemedView style={styles.container}>
             <ThemedView style={[!editable && styles.hidden]}>
+                <ThemedText style={styles.noteText}>
+                     Balance Case is MANUAL ENTRY ONLY. Users must calculate and enter values since Code Totals are not tracked in the system.
+                </ThemedText>
                 <ThemedButton text="Save" onPressEvent={handleSave} />
             </ThemedView>
 
@@ -312,7 +346,7 @@ const TraceAbilityTable: React.FC<TraceAbilityProps> = ({ editable }) => {
                 <ThemedText style={styles.productCodeHeader}>Product Code</ThemedText>
                 <ThemedText style={styles.headerCell}>Total</ThemedText>
                 <ThemedText style={styles.headerCell}>Used Case</ThemedText>
-                <ThemedText style={styles.headerCell}>Balance Case (Calc)</ThemedText>
+                <ThemedText style={styles.headerCell}>Balance Case (Manual)</ThemedText>
                 <ThemedText style={styles.headerCell}>Traceability</ThemedText>
                 <ThemedText style={styles.headerCell}>Before Date</ThemedText>
             </ThemedView>
@@ -455,6 +489,15 @@ const styles = StyleSheet.create({
         fontSize: 16,
         color: '#999',
     },
+    noteText: {
+        fontSize: 12,
+        color: '#666',
+        fontStyle: 'italic',
+        textAlign: 'center',
+        marginBottom: 10,
+        paddingHorizontal: 20,
+    },
 });
 
 export default TraceAbilityTable;
+

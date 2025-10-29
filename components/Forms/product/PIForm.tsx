@@ -72,6 +72,10 @@ const PIForm = (props: any) => {
     }
 
     const handleChange = async (name: keyof IPI, value: string) => {
+        console.log(`Updating field ${name} with value:`, value);
+        if (name === 'POQuality') {
+            console.log('POQuality field being updated to:', value);
+        }
         setFormData({ ...formData, [name]: value });
         setErrors({ ...errors, [name]: '' });
     };
@@ -140,7 +144,7 @@ const PIForm = (props: any) => {
                 label='PO Quality'
                 require={true}
                 name='POQuality'
-                value={formData.POQuality.toString()}
+                value={formData.POQuality}
                 error={errors.POQuality}
                 handleChange={handleChange}
             />

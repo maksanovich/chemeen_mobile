@@ -11,7 +11,7 @@ import { IItem } from '@/constants/Interfaces';
 
 import axiosInstance from '@/utils/axiosInstance';
 import { convertDataPicker } from '@/utils/utils';
-import { Alert } from 'react-native';
+import { showError, showWarning } from '@/utils/alertHelper';
 
 type PIErrors = Partial<Record<keyof IItem, string>>;
 
@@ -95,7 +95,7 @@ const ItemForm = (props: any) => {
                         size: item.PRSGDesc,
                         cartons: '',
                         kgQty: '',
-                        usdRate: '',
+                        usdRate: '1',
                         usdAmount: ''
                     }
                 })
@@ -132,9 +132,26 @@ const ItemForm = (props: any) => {
         }
 
         if (details.length === 0) {
-            Alert.alert('Notice', 'Please add at least one detail.\nIf you want to add detail, please select product species packing style.');
+            showWarning('Required Information', 'Please add at least one product detail.\n\nTo add details, first select a product species and packing style.');
             return;
         }
+
+        // Validate Rate field - must be mandatory and > 0
+        const rateValidationErrors: string[] = [];
+        details.forEach((detail, index) => {
+            const rate = parseFloat(detail.usdRate);
+            if (!detail.usdRate || detail.usdRate.trim() === '') {
+                rateValidationErrors.push(`Row ${index + 1}: Rate is required`);
+            } else if (isNaN(rate) || rate <= 0) {
+                rateValidationErrors.push(`Row ${index + 1}: Rate must be greater than 0`);
+            }
+        });
+
+        if (rateValidationErrors.length > 0) {
+            showError('Rate Validation Error', `Please fix the following rate issues:\n\n${rateValidationErrors.join('\n')}`);
+            return;
+        }
+
         handleSubmit();
     };
 

@@ -1,5 +1,5 @@
     import React, { useState } from 'react';
-    import { StyleSheet, Image, TouchableOpacity, Alert, ActivityIndicator, Modal, View, FlatList } from 'react-native';
+    import { StyleSheet, Image, TouchableOpacity, ActivityIndicator, Modal, View, FlatList } from 'react-native';
     import { useRouter } from 'expo-router';
     import * as FileSystem from 'expo-file-system';
     import * as Sharing from "expo-sharing";
@@ -11,6 +11,7 @@
     import { IPIItem } from '@/constants/Interfaces';
 
     import axiosInstance from '@/utils/axiosInstance';
+    import { showError, showSuccessToast, showInfo, showConfirmation } from '@/utils/alertHelper';
 
     import { useDispatch } from '@/store';
     import { setSelectedPIItem } from '@/store/reducers/selectedPI';
@@ -49,7 +50,7 @@
             let endpoint;
             if (option.key === 'elisa') {
                 if (!latestElisaPdfId) {
-                    Alert.alert("No PDF", "No Elisa PDF report available for this PI.");
+                    showError("No PDF", "No Elisa PDF report available for this PI.");
                     setDownloadingItems(prev => {
                         const newSet = new Set(prev);
                         newSet.delete(option.key);
@@ -86,15 +87,15 @@
                     uri: fileInfo.uri
                 });
 
-                // if (await Sharing.isAvailableAsync()) {
-                //     await Sharing.shareAsync(fileUri, {
-                //         mimeType: "application/pdf",
-                //         dialogTitle: `Save ${fileName}`,
-                //         UTI: "com.adobe.pdf",
-                //     });
-                // } else {
-                //     Alert.alert("Sharing not available", "Unable to save file on this device.");
-                // }
+                if (await Sharing.isAvailableAsync()) {
+                    await Sharing.shareAsync(fileUri, {
+                        mimeType: "application/pdf",
+                        dialogTitle: `Save ${fileName}`,
+                        UTI: "com.adobe.pdf",
+                    });
+                } else {
+                    showError("Sharing not available", "Unable to save file on this device.");
+                }
             } catch (err: any) {
                 console.error(`${option.title} download failed:`, err);
                 console.error('Error details:', {
@@ -106,7 +107,7 @@
                 const errorMsg = err.response?.status === 404 
                     ? `No ${option.title} PDF found for this PI`
                     : `Failed to download ${option.title} PDF`;
-                Alert.alert("Error", errorMsg);
+                showError("Error", errorMsg);
             } finally {
                 setDownloadingItems(prev => {
                     const newSet = new Set(prev);
@@ -133,6 +134,7 @@
                     ];
 
                     // Download generated PDFs
+                    const downloadedFiles: string[] = [];
                     for (const pdfFile of pdfFiles) {
                         if (pdfFile.data) {
                             const fileName = `PI-${item.No}-${pdfFile.name}.pdf`;
@@ -148,6 +150,8 @@
                                 size: fileInfo.size,
                                 uri: fileInfo.uri
                             });
+                            
+                            downloadedFiles.push(fileUri);
                         }
                     }
 
@@ -174,6 +178,8 @@
                                 size: fileInfo.size,
                                 uri: fileInfo.uri
                             });
+                            
+                            downloadedFiles.push(fileUri);
                         } catch (elisaErr) {
                             console.log('Elisa PDF download skipped:', elisaErr);
                             // Don't fail the whole download if elisa is missing
@@ -182,13 +188,47 @@
                         console.log('No Elisa PDF available, skipping...');
                     }
 
-                    Alert.alert("Success", "All PDFs have been downloaded successfully!");
+                    // Show success message and ask user if they want to share all files
+                    showSuccessToast(`${downloadedFiles.length} PDF files have been downloaded successfully!`);
+                    
+                    // Ask user if they want to share all files at once
+                    if (downloadedFiles.length > 0 && await Sharing.isAvailableAsync()) {
+                        showConfirmation(
+                            'Share All PDFs',
+                            `All ${downloadedFiles.length} PDF files have been downloaded. Would you like to share them now?\n\nNote: You'll be prompted to save each file individually.`,
+                            [
+                                {
+                                    text: 'Cancel',
+                                    style: 'cancel'
+                                },
+                                {
+                                    text: 'Share All',
+                                    onPress: async () => {
+                                        // Share all files in sequence
+                                        for (let i = 0; i < downloadedFiles.length; i++) {
+                                            const fileName = downloadedFiles[i].split('/').pop() || `PDF-${i + 1}`;
+                                            await Sharing.shareAsync(downloadedFiles[i], {
+                                                mimeType: "application/pdf",
+                                                dialogTitle: `Save ${fileName}`,
+                                                UTI: "com.adobe.pdf",
+                                            });
+                                            
+                                            // Small delay between shares to prevent overwhelming the user
+                                            if (i < downloadedFiles.length - 1) {
+                                                await new Promise(resolve => setTimeout(resolve, 500));
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        );
+                    }
                 } else {
                     throw new Error('Invalid response format');
                 }
             } catch (err) {
                 console.error('All PDFs download failed:', err);
-                Alert.alert("Error", "Failed to download all PDFs");
+                showError("Error", "Failed to download all PDFs");
             } finally {
                 setDownloadingItems(prev => {
                     const newSet = new Set(prev);

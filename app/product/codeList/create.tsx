@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import {
     StyleSheet,
     ScrollView,
-    Alert,
     TextInput
 } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -16,6 +15,13 @@ import { ThemedPicker } from '@/components/ThemedPicker';
 
 import axiosInstance from '@/utils/axiosInstance';
 import { convertDataPicker } from '@/utils/utils';
+import { 
+    showError, 
+    showSuccessToast, 
+    showWarning, 
+    showValidationError,
+    showAllocationError
+} from '@/utils/alertHelper';
 
 import { useSelector } from "@/store";
 
@@ -44,6 +50,13 @@ export default function CodeListCreateScreen() {
         getBaseData();
     }, []);
 
+    // Auto-populate grades when product is selected (only for new creation)
+    useEffect(() => {
+        if (item.itemId && grades.length > 0) {
+            syncGradesWithProductSilently();
+        }
+    }, [item.itemId, grades.length]);
+
     const getBaseData = async () => {
         try {
             if (selectedPI.PIId) {
@@ -60,6 +73,45 @@ export default function CodeListCreateScreen() {
             }
         } catch (error) {
             console.log(error);
+        }
+    };
+
+    const syncGradesWithProductSilently = async () => {
+        if (!item.itemId) return;
+
+        try {
+            const response = await axiosInstance.get(`product/itemDetail?type=PRSG&ItemId=${item.itemId}`);
+            const productGrades = response.data;
+
+            // Check if grades need updating
+            let needsUpdate = false;
+            productGrades.forEach((grade: any) => {
+                const currentValue = parseFloat(item[`grade_${grade.PRSGId}`]) || 0;
+                const productValue = parseFloat(grade.cartons) || 0;
+                if (Math.abs(currentValue - productValue) > 0.01) {
+                    needsUpdate = true;
+                }
+            });
+
+            // Update grades if they don't match
+            if (needsUpdate) {
+                setItem((prev: any) => {
+                    const newItem = { ...prev };
+                    let total = 0;
+
+                    productGrades.forEach((grade: any) => {
+                        const gradeValue = parseFloat(grade.cartons) || 0;
+                        newItem[`grade_${grade.PRSGId}`] = gradeValue.toString();
+                        total += gradeValue;
+                    });
+
+                    newItem.total = total.toString();
+                    setSumCartons(total);
+                    return newItem;
+                });
+            }
+        } catch (error) {
+            console.error('Error syncing grades silently:', error);
         }
     };
 
@@ -110,6 +162,8 @@ export default function CodeListCreateScreen() {
                 setAllocatedCartons(0);
                 setBalanceCartons(totalCartons);
             }
+
+            // Grades automatically synchronized in background
         }
     };
 
@@ -122,41 +176,132 @@ export default function CodeListCreateScreen() {
             setItem((prev: any) => {
                 const newItem = { ...prev };
 
+                // Clear existing grade fields
                 Object.keys(newItem).forEach(key => {
                     if (key.startsWith('grade_')) {
                         delete newItem[key];
                     }
                 });
 
+                // Auto-populate grade fields with product values (synchronized)
+                let total = 0;
                 itemGrades.forEach((grade: any) => {
-                    newItem[`grade_${grade.PRSGId}`] = '0';
+                    const gradeValue = parseFloat(grade.cartons) || 0;
+                    newItem[`grade_${grade.PRSGId}`] = gradeValue.toString();
+                    total += gradeValue;
                 });
 
-                newItem.total = '0';
+                newItem.total = total.toString();
+                setSumCartons(total);
 
                 return newItem;
             });
 
-            setSumCartons(0);
         } catch (error) {
             console.error('Error fetching PRSG for item:', error);
+        }
+    };
+
+    const validateCodeUniqueness = async () => {
+        if (!item.code || item.code.trim() === '') return true;
+
+        try {
+            // Check if code already exists for this PI
+            const response = await axiosInstance.get(`product/codeList/check-code/${selectedPI.PIId}/${encodeURIComponent(item.code.trim())}`);
+            
+            if (response.data.exists) {
+                showError('Duplicate Code', `The code "${item.code}" already exists in this PI. Please use a different code.`);
+                return false;
+            }
+
+            return true;
+        } catch (error) {
+            console.error('Error checking code uniqueness:', error);
+            // If validation fails due to API error, prevent save to avoid duplicates
+            showError(
+                'Validation Error',
+                'Could not verify code uniqueness due to a network error. Please check your connection and try again.'
+            );
+            return false; // Changed from true to false - prevent save on API error
+        }
+    };
+
+    const validateGradesAgainstProduct = async () => {
+        if (!item.itemId) return true;
+
+        try {
+            // Get product grades from backend
+            const response = await axiosInstance.get(`product/itemDetail?type=PRSG&ItemId=${item.itemId}`);
+            const productGrades = response.data;
+
+            // Create a map of product grades for quick lookup
+            const productGradeMap = new Map();
+            productGrades.forEach((grade: any) => {
+                productGradeMap.set(grade.PRSGId, parseFloat(grade.cartons) || 0);
+            });
+
+            // Validate each grade in Code List
+            const validationErrors: string[] = [];
+            grades.forEach((grade) => {
+                const codeListValue = parseFloat(item[`grade_${grade.PRSGId}`]) || 0;
+                const productValue = productGradeMap.get(grade.PRSGId) || 0;
+
+                if (codeListValue > productValue) {
+                    validationErrors.push(
+                        `Grade ${grade.value}: ${codeListValue} cartons exceeds Product requirement of ${productValue} cartons`
+                    );
+                }
+            });
+
+            if (validationErrors.length > 0) {
+                showValidationError(
+                    'Grade Validation Failed',
+                    validationErrors,
+                    () => {
+                        // Optional callback after user acknowledges the error
+                    }
+                );
+                return false;
+            }
+
+            return true;
+        } catch (error) {
+            console.error('Error validating grades:', error);
+            // If validation fails due to API error, allow save but show warning
+            showWarning(
+                'Validation Warning',
+                'Could not validate grades against Product requirements. Please ensure Code List grades do not exceed Product requirements.'
+            );
+            return true; // Allow save with warning
         }
     };
 
     const handleSave = async () => {
         // Validate required fields
         if (!item.productCode || !item.itemId) {
-            Alert.alert('Missing Product Code', 'Please select a product code to continue.');
+            showError('Missing Product Code', 'Please select a product code to continue.');
             return;
         }
 
         if (!item.code || item.code.trim() === '') {
-            Alert.alert('Missing Code', 'Please enter a code for this product.');
+            showError('Missing Code', 'Please enter a code for this product.');
             return;
         }
 
         if (!item.farmer) {
-            Alert.alert('Missing Farmer', 'Please select a farmer to continue.');
+            showError('Missing Farmer', 'Please select a farmer to continue.');
+            return;
+        }
+
+        // Validate code uniqueness
+        const codeUniquenessPassed = await validateCodeUniqueness();
+        if (!codeUniquenessPassed) {
+            return;
+        }
+
+        // Validate grades against Product requirements
+        const gradeValidationPassed = await validateGradesAgainstProduct();
+        if (!gradeValidationPassed) {
             return;
         }
 
@@ -168,19 +313,17 @@ export default function CodeListCreateScreen() {
 
         // Check if calculatedTotal exceeds available balance
         if (calculatedTotal > balanceCartons) {
-            Alert.alert(
-                'Insufficient Balance',
-                `Cannot allocate ${calculatedTotal} cartons.\n\n` +
-                `Total Cartons: ${TotalSumCarton}\n` +
-                `Already Allocated: ${allocatedCartons}\n` +
-                `Available Balance: ${balanceCartons}\n\n` +
-                `Please reduce your allocation to ${balanceCartons} or less.`
+            showAllocationError(
+                calculatedTotal,
+                balanceCartons,
+                TotalSumCarton,
+                allocatedCartons
             );
             return;
         }
 
         if (Math.abs(calculatedTotal - parseFloat(item.total || '0')) > 0.01) {
-            Alert.alert('Total Mismatch', 'The total does not match the sum of grade values. Please check your entries.');
+            showError('Total Mismatch', 'The total does not match the sum of grade values. Please check your entries.');
             return;
         }
 
@@ -191,7 +334,7 @@ export default function CodeListCreateScreen() {
         });
 
         if (!hasValidGrade) {
-            Alert.alert('No Grade Values', 'Please enter at least one grade value greater than 0.');
+            showError('No Grade Values', 'Please enter at least one grade value greater than 0.');
             return;
         }
 
@@ -201,14 +344,16 @@ export default function CodeListCreateScreen() {
                 PIId: selectedPI.PIId,
                 data: newItems
             });
-            Alert.alert('Success', 'Code list created successfully!');
+
+            showSuccessToast('Code list created successfully!');
             navigateWithFlow('/product/codeList/edit', true);
         } catch (error: any) {
             console.error('Save Error:', error);
             const errorMsg = error.response?.data?.details || error.response?.data?.error || 'Failed to save code list item';
-            Alert.alert('Error', errorMsg);
+            showError('Error', errorMsg);
         }
     };
+
 
     const transformItems = (items: any[]) => {
         const transformed: any = [];
@@ -243,7 +388,7 @@ export default function CodeListCreateScreen() {
                         name={'productCode'}
                         selectedValue={item.productCode}
                         handleChange={(name: string, value: string) => handleChange(name, value)}
-                        width={200}
+                        width={250}
                         height={50}
                     />
                 </ThemedView>
@@ -306,11 +451,25 @@ export default function CodeListCreateScreen() {
         <ScrollView>
             <ThemedView style={styles.container}>
                 <ThemedView style={styles.header}>
-                    <ThemedText style={styles.title}>Add Code List Items</ThemedText>
-                    <ThemedText style={styles.subtitle}>Total Cartons: {TotalSumCarton}</ThemedText>
-                    <ThemedText style={styles.subtitle}>Allocated: {allocatedCartons}</ThemedText>
-                    <ThemedText style={[styles.subtitle, styles.balanceText]}>Balance: {balanceCartons}</ThemedText>
-                    <ThemedText style={styles.subtitle}>Entering: {sumCartons}</ThemedText>
+                    <ThemedText style={styles.title}>Create Code List</ThemedText>
+                    <ThemedView style={styles.summaryContainer}>
+                        <ThemedView style={styles.summaryItem}>
+                            <ThemedText style={styles.summaryLabel}>Required</ThemedText>
+                            <ThemedText style={styles.summaryValue}>{TotalSumCarton}</ThemedText>
+                        </ThemedView>
+                        <ThemedView style={styles.summaryItem}>
+                            <ThemedText style={styles.summaryLabel}>Allocated</ThemedText>
+                            <ThemedText style={styles.summaryValue}>{allocatedCartons}</ThemedText>
+                        </ThemedView>
+                        <ThemedView style={styles.summaryItem}>
+                            <ThemedText style={styles.summaryLabel}>Available</ThemedText>
+                            <ThemedText style={[styles.summaryValue, styles.balanceValue]}>{balanceCartons}</ThemedText>
+                        </ThemedView>
+                        <ThemedView style={styles.summaryItem}>
+                            <ThemedText style={styles.summaryLabel}>This Entry</ThemedText>
+                            <ThemedText style={styles.summaryValue}>{sumCartons}</ThemedText>
+                        </ThemedView>
+                    </ThemedView>
                 </ThemedView>
 
                 <ThemedView style={styles.btnGroup}>
@@ -358,9 +517,41 @@ const styles = StyleSheet.create({
         fontWeight: '500',
     },
     balanceText: {
-        fontSize: 20,
+        fontSize: 16,
         color: '#059669',
         fontWeight: 'bold',
+    },
+    summaryContainer: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginTop: 15,
+        paddingHorizontal: 5,
+        flexWrap: 'wrap',
+    },
+    summaryItem: {
+        alignItems: 'center',
+        marginBottom: 12,
+        minWidth: '22%',
+        paddingVertical: 8,
+        paddingHorizontal: 4,
+    },
+    summaryLabel: {
+        fontSize: 12,
+        color: '#6b7280',
+        fontWeight: '500',
+        marginBottom: 4,
+        textAlign: 'center',
+    },
+    summaryValue: {
+        fontSize: 16,
+        color: '#1f2937',
+        fontWeight: 'bold',
+        textAlign: 'center',
+        minWidth: 60,
+    },
+    balanceValue: {
+        color: '#059669',
+        fontSize: 17,
     },
     btnGroup: {
         flexDirection: 'row',
@@ -419,5 +610,13 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         color: '#1e40af',
         fontSize: 17,
+    },
+    noteText: {
+        fontSize: 12,
+        color: '#666',
+        fontStyle: 'italic',
+        textAlign: 'center',
+        marginBottom: 10,
+        paddingHorizontal: 20,
     },
 });

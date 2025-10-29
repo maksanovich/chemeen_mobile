@@ -2,7 +2,6 @@ import React, { useEffect, useState, useCallback } from 'react';
 import {
     StyleSheet,
     ScrollView,
-    Alert,
     TouchableOpacity
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
@@ -12,6 +11,7 @@ import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
 import axiosInstance from '@/utils/axiosInstance';
 import { useSelector } from '@/store';
+import { showError, showWarning, showSuccess } from '@/utils/alertHelper';
 
 export default function ELISAEditScreen() {
     const selectedPI: any = useSelector((state) => state.selectedPI.data);
@@ -45,7 +45,7 @@ export default function ELISAEditScreen() {
     const handlePickFile = useCallback(async () => {
         // Don't allow picking if files are uploading
         if (isUploading) {
-            Alert.alert('Upload in Progress', 'Please wait for current uploads to complete');
+            showWarning('Upload in Progress', 'Please wait for current uploads to complete');
             return;
         }
         try {
@@ -80,10 +80,9 @@ export default function ELISAEditScreen() {
 
                 // Show alert if any files are too large
                 if (invalidFiles.length > 0) {
-                    Alert.alert(
+                    showError(
                         'File Too Large', 
-                        `The following files exceed the 7MB limit and cannot be uploaded:\n\n${invalidFiles.join('\n')}\n\nPlease choose smaller files.`,
-                        [{ text: 'OK' }]
+                        `The following files exceed the 7MB limit and cannot be uploaded:\n\n${invalidFiles.join('\n')}\n\nPlease choose smaller files.`
                     );
                 }
 
@@ -94,7 +93,7 @@ export default function ELISAEditScreen() {
             }
         } catch (error) {
             console.error('Error picking file:', error);
-            Alert.alert('Error', 'Failed to pick file. Please try again.');
+            showError('Error', 'Failed to pick file. Please try again.');
         }
     }, [isUploading]);
 
@@ -119,7 +118,7 @@ export default function ELISAEditScreen() {
             if (!file) return prevFiles;
 
             if (!selectedPI?.PI?.PINo) {
-                Alert.alert('Error', 'Invoice number not found.');
+                showError('Error', 'Invoice number not found.');
                 return prevFiles;
             }
 
@@ -182,7 +181,7 @@ export default function ELISAEditScreen() {
                         errorMessage = 'File too large or invalid format.';
                     }
                     
-                    Alert.alert('Upload Error', errorMessage);
+                    showError('Upload Error', errorMessage);
                     
                     // Update status to error
                     setFiles(prev => prev.map(f => 

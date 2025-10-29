@@ -65,6 +65,15 @@ const PIDetailTable: React.FC<PIDetailsProps> = (props) => {
         const cleanValue = value.replace(/[^0-9.]/g, ''); // allow decimals too
         const newData = [...details];
 
+        // Special validation for usdRate field
+        if (field === 'usdRate') {
+            const rate = parseFloat(cleanValue);
+            if (cleanValue !== '' && (isNaN(rate) || rate <= 0)) {
+                // Don't update if the value is invalid (0 or negative)
+                return;
+            }
+        }
+
         newData[index] = { ...newData[index], [field]: cleanValue };
 
         const row = newData[index];
@@ -112,12 +121,12 @@ const PIDetailTable: React.FC<PIDetailsProps> = (props) => {
                 style={[styles.cell, editable && styles.editableCell]}
                 value={item.usdRate}
                 onChangeText={(text) => handleChange(text, index, 'usdRate')}
-                placeholder="0"
+                placeholder="1"
                 keyboardType="numeric"
                 editable={editable}
             />
             <TextInput
-                style={styles.cell}
+                style={styles.amountCell}
                 value={item.usdAmount}
                 editable={false}
                 placeholder="0"
@@ -133,8 +142,8 @@ const PIDetailTable: React.FC<PIDetailsProps> = (props) => {
                 <ThemedText style={styles.headerCell}>SIZE</ThemedText>
                 <ThemedText style={styles.headerCell}>Cartons</ThemedText>
                 <ThemedText style={styles.headerCell}>KgQty</ThemedText>
-                <ThemedText style={styles.headerCell}>Rate</ThemedText>
-                <ThemedText style={styles.headerCell}>Amount</ThemedText>
+                <ThemedText style={styles.headerCell}>Rate*</ThemedText>
+                <ThemedText style={styles.amountHeaderCell}>Amount</ThemedText>
             </ThemedView>
 
             {/* <FlatList
@@ -153,7 +162,7 @@ const PIDetailTable: React.FC<PIDetailsProps> = (props) => {
                 <ThemedText style={styles.footerCell}>{totalCartons.toFixed(0)}</ThemedText>
                 <ThemedText style={styles.footerCell}>{totalKgQty.toFixed(2)}</ThemedText>
                 <ThemedText style={styles.footerCell}></ThemedText>
-                <ThemedText style={styles.footerCell}>{totalUsdAmount.toFixed(2)}</ThemedText>
+                <ThemedText style={styles.amountFooterCell}>{totalUsdAmount.toFixed(2)}</ThemedText>
             </ThemedView>
         </ThemedView>
     );
@@ -180,8 +189,19 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         textAlign: 'center',
     },
+    amountHeaderCell: {
+        width: '25%',
+        fontWeight: 'bold',
+        textAlign: 'center',
+    },
     footerCell: {
         width: '18%',
+        fontWeight: 'bold',
+        textAlign: 'center',
+        fontSize: 13,
+    },
+    amountFooterCell: {
+        width: '25%',
         fontWeight: 'bold',
         textAlign: 'center',
         fontSize: 13,
@@ -192,8 +212,22 @@ const styles = StyleSheet.create({
         color: '#000',
         fontSize: 13,
     },
+    amountCell: {
+        width: '25%',
+        textAlign: 'center',
+        color: '#000',
+        fontSize: 13,
+    },
     editableCell: {
         width: '18%',
+        borderWidth: 1,
+        borderColor: '#ccc',
+        padding: 8,
+        textAlign: 'center',
+        color: '#000'
+    },
+    amountEditableCell: {
+        width: '25%',
         borderWidth: 1,
         borderColor: '#ccc',
         padding: 8,

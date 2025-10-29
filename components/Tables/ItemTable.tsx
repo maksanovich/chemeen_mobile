@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { TextInput, StyleSheet, Pressable, Alert } from 'react-native';
+import { TextInput, StyleSheet, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 
 import { ThemedView } from '@/components/ThemedView';
@@ -10,6 +10,7 @@ import { TabBarIcon } from '@/components/ThemedIcon';
 import { useSelector, useDispatch } from "@/store";
 import { setSelectedPIItem } from '@/store/reducers/selectedPI';
 import axiosInstance from '@/utils/axiosInstance';
+import { showError, showConfirmation, showSuccessToast } from '@/utils/alertHelper';
 
 interface TraceAbilityProps {
     editable: boolean
@@ -33,7 +34,7 @@ const ItemTable: React.FC<TraceAbilityProps> = ({ editable }) => {
                     setItems(response.data);
                 } catch (error) {
                     console.error('Error fetching merged item data:', error);
-                    Alert.alert('Error', 'Failed to load item data');
+                    showError('Error', 'Failed to load item data');
                 } finally {
                     setLoading(false);
                 }
@@ -44,7 +45,7 @@ const ItemTable: React.FC<TraceAbilityProps> = ({ editable }) => {
     }, [selectedPI.PIId]);
 
     const handleDelete = (index: number) => {
-        Alert.alert(
+        showConfirmation(
             'Delete Item',
             'Are you sure you want to delete this item?',
             [
@@ -65,9 +66,11 @@ const ItemTable: React.FC<TraceAbilityProps> = ({ editable }) => {
                             const response = await axiosInstance.get(`product/item/merged/${selectedPI.PIId}`);
                             setItems(response.data);
                             
+                            showSuccessToast('Item deleted successfully!');
+                            
                         } catch (error) {
                             console.log(error, 'handle delete item===');
-                            Alert.alert('Error', "This product cannot be deleted because it is associated with other records in the system.")
+                            showError('Error', "This product cannot be deleted because it is associated with other records in the system.");
                         }
                     },
                 },
@@ -96,7 +99,7 @@ const ItemTable: React.FC<TraceAbilityProps> = ({ editable }) => {
             </Pressable>
             <ThemedText style={styles.cell}>{item.totalCarton}</ThemedText>
             <ThemedText style={styles.cell}>{item.totalKgQty}</ThemedText>
-            <ThemedText style={styles.cell}>{item.totalAmount}</ThemedText>
+            <ThemedText style={styles.amountCell}>{item.totalAmount}</ThemedText>
         </ThemedView>
     );
 
@@ -118,7 +121,7 @@ const ItemTable: React.FC<TraceAbilityProps> = ({ editable }) => {
                 <ThemedText style={styles.productCodeHeader}>Product code</ThemedText>
                 <ThemedText style={styles.headerCell}>Cartons</ThemedText>
                 <ThemedText style={styles.headerCell}>KgQTY</ThemedText>
-                <ThemedText style={styles.headerCell}>Amount</ThemedText>
+                <ThemedText style={styles.amountHeaderCell}>Amount</ThemedText>
             </ThemedView>
 
             {loading ? (
@@ -167,6 +170,13 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         textAlign: 'center',
     },
+    amountHeaderCell: {
+        fontSize: 16,
+        width: 130,
+        padding: 5,
+        fontWeight: 'bold',
+        textAlign: 'center',
+    },
     productCodeHeader: {
         width: 200,
         padding: 5,
@@ -190,8 +200,19 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         textAlign: 'center',
     },
+    amountFooterCell: {
+        width: 130,
+        padding: 5,
+        fontWeight: 'bold',
+        textAlign: 'center',
+    },
     cell: {
         width: 100,
+        textAlign: 'center',
+        color: '#000',
+    },
+    amountCell: {
+        width: 130,
         textAlign: 'center',
         color: '#000',
     },

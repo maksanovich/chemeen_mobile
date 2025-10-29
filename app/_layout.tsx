@@ -35,7 +35,7 @@ export default function RootLayout() {
   return (
     <Provider store={store}>
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        {/* <ThemedAlert> */}
+        <ThemedAlert>
           <Stack
             screenOptions={({ route }) => ({
               title: getHeaderTitle(route.name),
@@ -54,7 +54,7 @@ export default function RootLayout() {
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen name="+not-found" />
           </Stack>
-        {/* </ThemedAlert> */}
+        </ThemedAlert>
       </ThemeProvider>
     </Provider>
   );
