@@ -298,7 +298,7 @@ export const showCartonMismatchWarning = (
         type: ALERT_TYPE.WARNING,
         title: 'Carton Count Mismatch',
         textBody: `Found ${mismatches.length} product${mismatches.length > 1 ? 's' : ''} with incorrect carton counts:\n\n${mismatches.join('\n\n')}\n\nPlease fix the Code List before continuing.`,
-        button: 'Fix Code List',
+        button: 'OK',
         onPressButton: () => {
             Dialog.hide();
             if (onFixCodeList) onFixCodeList();

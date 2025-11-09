@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { TextInput, StyleSheet, Alert, Text, Pressable } from 'react-native';
+import { TextInput, StyleSheet, Text, Pressable, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 
 import { ThemedView } from '@/components/ThemedView';
@@ -46,7 +46,9 @@ const TraceAbilityTable: React.FC<TraceAbilityProps> = ({ editable }) => {
                 try {
                     const response = await axiosInstance.get(`product/traceAbility?type=formatted&PIId=${selectedPI.PIId}`);
                     console.log('Traceability data received:', response.data);
-                    setItems(response.data);
+                    // Ensure each item has its own unique object reference
+                    const itemsWithUniqueRefs = response.data.map((item: ITraceAbility) => ({ ...item }));
+                    setItems(itemsWithUniqueRefs);
                 } catch (error) {
                     console.error('Error fetching traceability data:', error);
                 } finally {
@@ -89,98 +91,96 @@ const TraceAbilityTable: React.FC<TraceAbilityProps> = ({ editable }) => {
         if (field === 'rawMaterialQty' || field === 'headlessQty' || field === 'usedCase' || field === 'ballanceCase') {
             // Remove any non-numeric characters except decimal point
             value = value.replace(/[^0-9.]/g, '');
-            
+
             // Prevent multiple decimal points
             const parts = value.split('.');
             if (parts.length > 2) {
                 value = parts[0] + '.' + parts.slice(1).join('');
             }
-            
+
             // Remove leading zeros (e.g., "023" -> "23", "0.5" -> "0.5")
             if (value.length > 1 && value[0] === '0' && value[1] !== '.') {
                 value = value.replace(/^0+/, '') || '0';
             }
-            
+
             // Handle empty string
             if (value === '' || value === '.') {
                 value = '0';
             }
         }
 
-        if (field === 'productDate') {
-            const parsedDate = new Date(value);
+        // Update only the specific item at the specified index
+        setItems((prevItems) => {
+            // Create a new array
+            const updatedItems = [...prevItems];
 
-            parsedDate.setDate(parsedDate.getDate() - 1);
+            // Only update the item at the specified index
+            if (field === 'productDate') {
+                const parsedDate = new Date(value);
+                parsedDate.setDate(parsedDate.getDate() - 1);
 
-            const updatedItems = [...items];
-            updatedItems[index] = {
-                ...updatedItems[index],
-                [field]: value,
-                beforeDate: parsedDate.toISOString().split('T')[0],
-            };
-            setItems(updatedItems);
-        } else {
-            const updatedItems = [...items];
-            
-            // Special validation for usedCase
-            if (field === 'usedCase') {
-                const total = parseFloat(updatedItems[index].total) || 0;
-                const usedCase = parseFloat(value) || 0;
-                
-                // Check if usedCase exceeds total
-                if (usedCase > total) {
-                    showBalanceError(usedCase, total, updatedItems[index].productCode);
-                    // Cap the value at total (max limit)
-                    value = total.toString();
-                }
-                
-                // Note: Balance Case is now user-editable, no auto-calculation
+                // Create a new object with updated fields for the changed item only
                 updatedItems[index] = {
-                    ...updatedItems[index],
+                    ...prevItems[index],
                     [field]: value,
+                    beforeDate: parsedDate.toISOString().split('T')[0],
                 };
             } else {
+                // Special validation for usedCase
+                if (field === 'usedCase') {
+                    const total = parseFloat(prevItems[index].total) || 0;
+                    const usedCase = parseFloat(value) || 0;
+
+                    // Check if usedCase exceeds total
+                    if (usedCase > total) {
+                        showBalanceError(usedCase, total, prevItems[index].productCode);
+                        // Cap the value at total (max limit)
+                        value = total.toString();
+                    }
+                }
+
+                // Create a new object with updated field for the changed item only
                 updatedItems[index] = {
-                    ...updatedItems[index],
+                    ...prevItems[index],
                     [field]: value,
                 };
             }
-            
-            setItems(updatedItems);
-        }
+
+            return updatedItems;
+        });
     };
 
     const handleSave = async () => {
         console.log('Save button clicked, validating items:', items);
-        
+
         // Check for missing dates specifically
         const missingDates: string[] = [];
         const missingFields: string[] = [];
-        
+
         for (let i = 0; i < items.length; i++) {
             const item = items[i];
             const rowNumber = i + 1;
-            
+
             console.log(`Row ${rowNumber}:`, {
                 productDate: item.productDate,
                 rawMaterialQty: item.rawMaterialQty,
                 headlessQty: item.headlessQty,
                 code: item.code
             });
-            
+
             // Check for missing production date
             if (!item.productDate || item.productDate === '' || item.productDate === 'Select Date') {
                 missingDates.push(`Row ${rowNumber} (Code: ${item.code})`);
             }
-            
+
             // Check for missing quantities (including 0 values)
             const rawMaterialQty = parseFloat(item.rawMaterialQty) || 0;
             const headlessQty = parseFloat(item.headlessQty) || 0;
-            
+
             if (rawMaterialQty <= 0) {
                 missingFields.push(`Row ${rowNumber} (Code: ${item.code}): Raw Material Qty`);
             }
-            
+
             if (headlessQty <= 0) {
                 missingFields.push(`Row ${rowNumber} (Code: ${item.code}): Headless Qty`);
             }
@@ -207,6 +207,8 @@ const TraceAbilityTable: React.FC<TraceAbilityProps> = ({ editable }) => {
                 const { PRSId, PRSName, PRSTId, PRSTName, productCode, ...rest } = it;
                 return {
                     ...rest,
+                    ItemId: it.ItemId, // Explicitly include ItemId
+                    code: it.code, // Explicitly include code to ensure proper identification
                     total: rest.totalCartons || '0',
                     productDate: rest.productDate || '',
                     rawMaterialQty: rest.rawMaterialQty || '0',
@@ -235,7 +237,9 @@ const TraceAbilityTable: React.FC<TraceAbilityProps> = ({ editable }) => {
 
             // Refresh data from database after successful save
             const response = await axiosInstance.get(`product/traceAbility?type=formatted&PIId=${selectedPI.PIId}`);
-            setItems(response.data);
+            // Ensure each item has its own unique object reference
+            const itemsWithUniqueRefs = response.data.map((item: ITraceAbility) => ({ ...item }));
+            setItems(itemsWithUniqueRefs);
 
             console.log('Save successful, showing success message');
             showSuccessToast('Traceability data saved successfully!');
@@ -246,86 +250,93 @@ const TraceAbilityTable: React.FC<TraceAbilityProps> = ({ editable }) => {
         }
     };
 
-    const renderItem = ({ item, index }: { item: ITraceAbility; index: number }) => (
-        <ThemedView style={styles.row} key={index}>
-            <ThemedDatePicker
-                style={[styles.datePickerCell, styles.datePicker, editable && styles.editableCell]}
-                label={''}
-                require={false}
-                name={'productDate'}
-                selectedValue={item.productDate}
-                handleChange={(name: keyof ITraceAbility, value: string) => handleChange(value, index, name)}
-                editable={editable}
-            />
-            <TextInput
-                style={[styles.cell, editable && styles.editableCell]}
-                value={item.rawMaterialQty}
-                onChangeText={(text) => handleChange(text, index, 'rawMaterialQty')}
-                placeholder="0"
-                keyboardType="numeric"
-                editable={editable}
-            />
-            <TextInput
-                style={[styles.cell, editable && styles.editableCell]}
-                value={item.headlessQty}
-                onChangeText={(text) => handleChange(text, index, 'headlessQty')}
-                placeholder="0"
-                keyboardType="numeric"
-                editable={editable}
-            />
-            <TextInput
-                style={styles.cell}
-                value={item.code}
-                editable={false}
-            />
-            <Pressable onPress={() => router.push(`/product/item/${item.ItemId}`)}>
-                <Text
-                    style={[styles.productCodeCell, styles.clickableText]}
-                    numberOfLines={1}
-                    ellipsizeMode="tail"
-                >
-                    {item.productCode}
-                </Text>
-            </Pressable>
-            <TextInput
-                style={styles.cell}
-                value={item.total || '0'}
-                editable={false}
-            />
-            <TextInput
-                style={[styles.cell, editable && styles.editableCell]}
-                value={item.usedCase}
-                onChangeText={(text) => handleChange(text, index, 'usedCase')}
-                placeholder="0"
-                keyboardType="numeric"
-                editable={editable}
-            />
-            <TextInput
-                style={[
-                    styles.cell, 
-                    editable && styles.editableCell
-                ]}
-                value={item.ballanceCase}
-                onChangeText={(text) => {
-                    console.log('Balance Case changed:', text, 'for item:', item.code);
-                    handleChange(text, index, 'ballanceCase');
-                }}
-                placeholder=""
-                keyboardType="numeric"
-                editable={editable}
-            />
-            <TextInput
-                style={styles.cell}
-                value={item.farmName}
-                editable={false}
-            />
-            <TextInput
-                style={styles.cell}
-                value={item.beforeDate}
-                editable={false}
-            />
-        </ThemedView>
-    );
+    const renderItem = ({ item, index }: { item: ITraceAbility; index: number }) => {
+        const rowKey = `traceability-row-${item.ItemId}-${item.code}-${index}`;
+        return (
+            <ThemedView key={rowKey} style={styles.row}>
+                <ThemedDatePicker
+                    style={[styles.datePickerCell, styles.datePicker, editable && styles.editableCell]}
+                    label={''}
+                    require={false}
+                    name={'productDate'}
+                    selectedValue={item.productDate}
+                    handleChange={(name: keyof ITraceAbility, value: string) => handleChange(value, index, name)}
+                    editable={editable}
+                />
+                <TextInput
+                    key={`rawMaterialQty-${item.ItemId}-${item.code}-${index}`}
+                    style={[styles.cell, editable && styles.editableCell]}
+                    value={item.rawMaterialQty || ''}
+                    onChangeText={(text) => handleChange(text, index, 'rawMaterialQty')}
+                    placeholder="0"
+                    keyboardType="numeric"
+                    editable={editable}
+                />
+                <TextInput
+                    key={`headlessQty-${item.ItemId}-${item.code}-${index}`}
+                    style={[styles.cell, editable && styles.editableCell]}
+                    value={item.headlessQty || ''}
+                    onChangeText={(text) => handleChange(text, index, 'headlessQty')}
+                    placeholder="0"
+                    keyboardType="numeric"
+                    editable={editable}
+                />
+                <TextInput
+                    style={styles.cell}
+                    value={item.code}
+                    editable={false}
+                />
+                <Pressable onPress={() => router.push(`/product/item/${item.ItemId}`)}>
+                    <Text
+                        style={[styles.productCodeCell, styles.clickableText]}
+                        numberOfLines={1}
+                        ellipsizeMode="tail"
+                    >
+                        {item.productCode}
+                    </Text>
+                </Pressable>
+                <TextInput
+                    style={styles.cell}
+                    value={item.total || '0'}
+                    editable={false}
+                />
+                <TextInput
+                    key={`usedCase-${item.ItemId}-${item.code}-${index}`}
+                    style={[styles.cell, editable && styles.editableCell]}
+                    value={item.usedCase || ''}
+                    onChangeText={(text) => handleChange(text, index, 'usedCase')}
+                    placeholder="0"
+                    keyboardType="numeric"
+                    editable={editable}
+                />
+                <TextInput
+                    key={`ballanceCase-${item.ItemId}-${item.code}-${index}`}
+                    style={[
+                        styles.cell,
+                        editable && styles.editableCell
+                    ]}
+                    value={item.ballanceCase || ''}
+                    onChangeText={(text) => {
+                        console.log('Balance Case changed:', text, 'for item:', item.code);
+                        handleChange(text, index, 'ballanceCase');
+                    }}
+                    placeholder=""
+                    keyboardType="numeric"
+                    editable={editable}
+                />
+                <TextInput
+                    style={styles.cell}
+                    value={item.farmName}
+                    editable={false}
+                />
+                <TextInput
+                    style={styles.cell}
+                    value={item.beforeDate}
+                    editable={false}
+                />
+            </ThemedView>
+        );
+    };
 
     const { totalRawMaterialQty, totalHeadlessQty, total, totalUsedcase, totalBallance } = calculateFooterTotals();
 
@@ -333,7 +344,7 @@ const TraceAbilityTable: React.FC<TraceAbilityProps> = ({ editable }) => {
         <ThemedView style={styles.container}>
             <ThemedView style={[!editable && styles.hidden]}>
                 <ThemedText style={styles.noteText}>
-                     Balance Case is MANUAL ENTRY ONLY. Users must calculate and enter values since Code Totals are not tracked in the system.
+                    Balance Case is MANUAL ENTRY ONLY. Users must calculate and enter values since Code Totals are not tracked in the system.
                 </ThemedText>
                 <ThemedButton text="Save" onPressEvent={handleSave} />
             </ThemedView>
@@ -347,18 +358,18 @@ const TraceAbilityTable: React.FC<TraceAbilityProps> = ({ editable }) => {
                 <ThemedText style={styles.headerCell}>Total</ThemedText>
                 <ThemedText style={styles.headerCell}>Used Case</ThemedText>
                 <ThemedText style={styles.headerCell}>Balance Case (Manual)</ThemedText>
-                <ThemedText style={styles.headerCell}>Traceability</ThemedText>
+                <ThemedText style={styles.headerCell}>Farm</ThemedText>
                 <ThemedText style={styles.headerCell}>Before Date</ThemedText>
             </ThemedView>
-
-            {loading ? (
-                <ThemedText style={styles.loadingText}>Loading traceability data...</ThemedText>
-            ) : items.length > 0 ? (
-                items.map((item, index) => renderItem({ item, index }))
-            ) : (
-                <ThemedText style={styles.noDataText}>No traceability data found</ThemedText>
-            )}
-
+            <ScrollView>
+                {loading ? (
+                    <ThemedText style={styles.loadingText}>Loading traceability data...</ThemedText>
+                ) : items.length > 0 ? (
+                    items.map((item, index) => renderItem({ item, index }))
+                ) : (
+                    <ThemedText style={styles.noDataText}>No traceability data found</ThemedText>
+                )}
+            </ScrollView>
             <ThemedView style={styles.row}>
                 <ThemedText style={[styles.footerCell, { width: 140 }]}>TOTAL</ThemedText>
                 <ThemedText style={styles.footerCell}>{totalRawMaterialQty.toFixed(2)}</ThemedText>

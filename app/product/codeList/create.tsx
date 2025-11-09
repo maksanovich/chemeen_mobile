@@ -50,13 +50,6 @@ export default function CodeListCreateScreen() {
         getBaseData();
     }, []);
 
-    // Auto-populate grades when product is selected (only for new creation)
-    useEffect(() => {
-        if (item.itemId && grades.length > 0) {
-            syncGradesWithProductSilently();
-        }
-    }, [item.itemId, grades.length]);
-
     const getBaseData = async () => {
         try {
             if (selectedPI.PIId) {
@@ -135,20 +128,21 @@ export default function CodeListCreateScreen() {
 
         if (field === 'productCode' && value) {
             setItem((prev: any) => ({ ...prev, itemId: value }));
-            await fetchPRSGForItem(value, 0);
-
+            
             // Get total cartons from item details
             const response = await axiosInstance.get(`product/itemDetail?type=sumCartons&ItemId=${value}`);
             const totalCartons = response.data.sumCartons;
             setTotalSumCarton(totalCartons);
 
             // Get already allocated cartons from existing codelist entries for this ItemId and PIId
+            let allocated = 0;
+            let existingCodeList: any[] = [];
             try {
                 const codeListResponse = await axiosInstance.get(`product/codeList/pi/${selectedPI.PIId}`);
-                const existingCodeList = codeListResponse.data;
+                existingCodeList = codeListResponse.data;
                 
                 // Sum up all allocated cartons for this ItemId
-                const allocated = existingCodeList
+                allocated = existingCodeList
                     .filter((codeItem: any) => codeItem.ItemId === parseInt(value))
                     .reduce((sum: number, codeItem: any) => sum + (codeItem.total || 0), 0);
                 
@@ -163,15 +157,47 @@ export default function CodeListCreateScreen() {
                 setBalanceCartons(totalCartons);
             }
 
+            // Fetch PRSG and auto-populate with available values (considering per-grade allocations)
+            await fetchPRSGForItem(value, 0, existingCodeList, totalCartons - allocated);
+
             // Grades automatically synchronized in background
         }
     };
 
-    const fetchPRSGForItem = async (itemId: string, index: number) => {
+    const fetchPRSGForItem = async (itemId: string, index: number, existingCodeList: any[] = [], availableBalance: number = 0) => {
         try {
             const response = await axiosInstance.get(`product/itemDetail?type=PRSG&ItemId=${itemId}`);
             const itemGrades = response.data;
             setGrades(itemGrades);
+
+            // Calculate per-grade allocations from existing code list entries
+            const gradeAllocations = new Map<number, number>();
+            existingCodeList
+                .filter((codeItem: any) => codeItem.ItemId === parseInt(itemId))
+                .forEach((codeItem: any) => {
+                    if (codeItem.grades && Array.isArray(codeItem.grades)) {
+                        codeItem.grades.forEach((grade: any) => {
+                            const currentAllocated = gradeAllocations.get(grade.PRSGId) || 0;
+                            gradeAllocations.set(grade.PRSGId, currentAllocated + (parseFloat(grade.value) || 0));
+                        });
+                    }
+                });
+
+            // Calculate per-grade available amounts and total available
+            const gradeAvailables: Array<{ PRSGId: number; available: number; required: number }> = [];
+            let totalAvailable = 0;
+            
+            itemGrades.forEach((grade: any) => {
+                const required = parseFloat(grade.cartons) || 0;
+                const allocated = gradeAllocations.get(grade.PRSGId) || 0;
+                const available = Math.max(0, required - allocated);
+                gradeAvailables.push({
+                    PRSGId: grade.PRSGId,
+                    available: available,
+                    required: required
+                });
+                totalAvailable += available;
+            });
 
             setItem((prev: any) => {
                 const newItem = { ...prev };
@@ -183,13 +209,32 @@ export default function CodeListCreateScreen() {
                     }
                 });
 
-                // Auto-populate grade fields with product values (synchronized)
+                // Auto-populate grade fields with available values, distributed proportionally
                 let total = 0;
-                itemGrades.forEach((grade: any) => {
-                    const gradeValue = parseFloat(grade.cartons) || 0;
-                    newItem[`grade_${grade.PRSGId}`] = gradeValue.toString();
-                    total += gradeValue;
-                });
+                if (totalAvailable > 0 && availableBalance > 0) {
+                    // Distribute availableBalance proportionally based on each grade's available amount
+                    // Ensure no grade exceeds its individual available amount
+                    itemGrades.forEach((grade: any) => {
+                        const gradeInfo = gradeAvailables.find(g => g.PRSGId === grade.PRSGId);
+                        if (gradeInfo && gradeInfo.available > 0) {
+                            // Calculate proportional distribution
+                            const proportion = gradeInfo.available / totalAvailable;
+                            const distributedValue = Math.floor(proportion * availableBalance);
+                            // Cap at the grade's available amount to ensure we don't exceed per-grade limits
+                            const finalValue = Math.min(distributedValue, gradeInfo.available);
+                            newItem[`grade_${grade.PRSGId}`] = finalValue.toString();
+                            total += finalValue;
+                        } else {
+                            // No available for this grade
+                            newItem[`grade_${grade.PRSGId}`] = '0';
+                        }
+                    });
+                } else {
+                    // No available balance or no available grades, set all to 0
+                    itemGrades.forEach((grade: any) => {
+                        newItem[`grade_${grade.PRSGId}`] = '0';
+                    });
+                }
 
                 newItem.total = total.toString();
                 setSumCartons(total);
@@ -350,7 +395,7 @@ export default function CodeListCreateScreen() {
         } catch (error: any) {
             console.error('Save Error:', error);
             const errorMsg = error.response?.data?.details || error.response?.data?.error || 'Failed to save code list item';
-            showError('Error', errorMsg);
+            showError('Error', 'Failed to save code list item');
         }
     };
 
@@ -361,14 +406,19 @@ export default function CodeListCreateScreen() {
             Object.keys(item).forEach(key => {
                 if (key.startsWith('grade_')) {
                     const prsgId = key.replace('grade_', '');
-                    transformed.push({
-                        PIId: selectedPI.PIId,
-                        ItemId: item.itemId, // Include the itemId
-                        PRSGId: parseInt(prsgId),
-                        value: parseFloat(item[key]),
-                        code: item.code,
-                        farmId: item.farmer
-                    });
+                    const value = parseFloat(item[key]);
+                    // Only include entries with valid positive values (> 0)
+                    // This prevents null/NaN/0 values from being sent to the API
+                    if (!isNaN(value) && value > 0) {
+                        transformed.push({
+                            PIId: selectedPI.PIId,
+                            ItemId: item.itemId, // Include the itemId
+                            PRSGId: parseInt(prsgId),
+                            value: value,
+                            code: item.code,
+                            farmId: item.farmer
+                        });
+                    }
                 }
             });
         });
@@ -426,7 +476,7 @@ export default function CodeListCreateScreen() {
                         <TextInput
                             style={[styles.inputField]}
                             onChangeText={(text) => handleChange(`grade_${grade.PRSGId}`, text)}
-                            value={item[`grade_${grade.PRSGId}`] || '0'}
+                            value={item[`grade_${grade.PRSGId}`] !== undefined && item[`grade_${grade.PRSGId}`] !== null ? String(item[`grade_${grade.PRSGId}`]) : '0'}
                             keyboardType="numeric"
                             editable={grade.cartons != null && Number(grade.cartons) > 0}
                             selectTextOnFocus={true}

@@ -32,7 +32,7 @@ export default function CompanyAddScreen() {
         } catch (error: any) {
             console.error('Fetch Error:', error);
             const errorMsg = error.response?.data?.message || 'Failed to create company';
-            showError('Error', errorMsg);
+            showError('Error', 'Failed to create company');
         }
     }
 

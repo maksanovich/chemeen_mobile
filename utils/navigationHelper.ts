@@ -1,4 +1,6 @@
-import { router } from 'expo-router';
+import { router, usePathname } from 'expo-router';
+import { useEffect } from 'react';
+import { useNavigation } from '@react-navigation/native';
 
 // Define the logical navigation flow
 export const NAVIGATION_FLOW: any = {
@@ -37,7 +39,26 @@ export const NAVIGATION_FLOW: any = {
 // Get the logical back route for a given current route
 export const getLogicalBackRoute = (currentRoute: string): string | null => {
   // Remove query parameters and dynamic segments for matching
-  const cleanRoute: any = currentRoute.split('?')[0].replace(/\/\[.*?\]/g, '');
+  const cleanRoute: any = currentRoute.split('?')[0];
+
+  // Generic Master rules
+  // master/<entity>/add or master/<entity>/[id] -> master/<entity>/list
+  const masterAddOrEdit = cleanRoute.match(/^master\/([^/]+)\/(add|\[.*?\])$/);
+  if (masterAddOrEdit) {
+    const entity = masterAddOrEdit[1];
+    return `master/${entity}/list`;
+  }
+
+  // master/<entity>/list -> master
+  const masterList = cleanRoute.match(/^master\/([^/]+)\/list$/);
+  if (masterList) {
+    return 'master';
+  }
+
+  // Product root should go back to List tab
+  if (cleanRoute === 'product' || cleanRoute === '/product') {
+    return '/';
+  }
 
   // Check if we have a defined flow for this route
   if (NAVIGATION_FLOW[cleanRoute]) {
@@ -89,4 +110,23 @@ export const shouldUseReplace = (fromRoute: string, toRoute: string): boolean =>
   ];
 
   return replacePatterns.some(pattern => pattern.test(toRoute));
+};
+
+// React hook: intercept back and navigate to logical parent
+export const useLogicalBackOnExit = () => {
+  const navigation: any = useNavigation();
+  const pathname = usePathname();
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('beforeRemove', (e: any) => {
+      // Only intercept actual back actions to avoid loops with replace/navigation
+      const actionType = e?.data?.action?.type;
+      if (actionType === 'GO_BACK' || actionType === 'POP' || actionType === 'POP_TO_TOP') {
+        e.preventDefault();
+        navigateBackWithFlow(pathname);
+      }
+      // For REPLACE/NAVIGATE actions, don't block
+    });
+    return unsubscribe;
+  }, [navigation, pathname]);
 };

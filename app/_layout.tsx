@@ -7,6 +7,7 @@ import 'react-native-reanimated';
 
 import ThemedAlert from '@/components/ThemedAlert';
 import ThemedBackButton from '@/components/ThemedBackButton';
+import HeaderQuickActions from '@/components/HeaderQuickActions';
 
 import { Provider } from 'react-redux';
 import { store } from '@/store';
@@ -49,6 +50,7 @@ export default function RootLayout() {
               headerTintColor: '#fff',
               headerBackVisible: false,
               headerLeft: () => <ThemedBackButton />,
+              headerRight: () => <HeaderQuickActions />,
             })}
           >
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />

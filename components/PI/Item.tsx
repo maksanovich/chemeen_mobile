@@ -35,12 +35,12 @@
         }
 
         const pdfOptions = [
-            { key: 'all', title: 'All PDFs', endpoint: 'export' },
+            // { key: 'all', title: 'All PDFs', endpoint: 'export' },
             { key: 'pi', title: 'Invoice', endpoint: 'export/pi' },
             { key: 'codelist', title: 'Code List', endpoint: 'export/codelist' },
             { key: 'traceability', title: 'Traceability', endpoint: 'export/traceability' },
             { key: 'bar', title: 'BAR', endpoint: 'export/bar' },
-            { key: 'elisa', title: 'Elisa', endpoint: 'export/elisa' }
+            // { key: 'elisa', title: 'Elisa', endpoint: 'export/elisa' }
         ];
 
         const downloadSinglePDF = async (option: any) => {

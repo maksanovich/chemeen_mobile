@@ -25,7 +25,7 @@ import {
 } from '@/utils/alertHelper';
 
 import { useSelector } from "@/store";
-import { navigateBackWithFlow } from '@/utils/navigationHelper';
+import { navigateWithFlow } from '@/utils/navigationHelper';
 
 interface CodeItem {
     productCode: string;
@@ -386,7 +386,7 @@ export default function CodeListEditScreen() {
             });
 
             showSuccessToast('Code list updated successfully!');
-            navigateBackWithFlow('/product/codeList/edit');
+            navigateWithFlow('/product/codeList/edit', true);
         } catch (error: any) {
             console.error('Save Error:', error);
             const errorMsg = error.response?.data?.details || error.response?.data?.error || 'Failed to update code list item';
@@ -402,21 +402,38 @@ export default function CodeListEditScreen() {
                 if (key.startsWith('grade_')) {
                     const prsgId = key.replace('grade_', '');
                     const codeIdKey = `codeId_${prsgId}`;
-                    const itemData: any = {
-                        PIId: selectedPI.PIId,
-                        ItemId: item.itemId, // Include the itemId
-                        PRSGId: parseInt(prsgId),
-                        value: parseFloat(item[key]),
-                        code: item.code,
-                        farmId: item.farmer
-                    };
-
-                    // Include codeId if it exists (for updates)
-                    if (item[codeIdKey]) {
-                        itemData.codeId = item[codeIdKey];
+                    const value = parseFloat(item[key]);
+                    const codeId = item[codeIdKey];
+                    
+                    // For updates: if codeId exists, include the entry even if value is 0
+                    // For new entries: only include entries with valid positive values (> 0)
+                    if (codeId) {
+                        // If updating an existing entry, include it even if value is 0
+                        if (!isNaN(value) && value >= 0) {
+                            // Update with new value (including 0)
+                            transformed.push({
+                                PIId: selectedPI.PIId,
+                                ItemId: item.itemId,
+                                PRSGId: parseInt(prsgId),
+                                value: value,
+                                code: item.code,
+                                farmId: item.farmer,
+                                codeId: codeId
+                            });
+                        }
+                    } else {
+                        // New entry - only include if value is valid and > 0
+                        if (!isNaN(value) && value > 0) {
+                            transformed.push({
+                                PIId: selectedPI.PIId,
+                                ItemId: item.itemId,
+                                PRSGId: parseInt(prsgId),
+                                value: value,
+                                code: item.code,
+                                farmId: item.farmer
+                            });
+                        }
                     }
-
-                    transformed.push(itemData);
                 }
             });
         });
@@ -482,7 +499,7 @@ export default function CodeListEditScreen() {
                         <TextInput
                             style={[styles.inputField]}
                             onChangeText={(text) => handleChange(`grade_${grade.PRSGId}`, text)}
-                            value={item[`grade_${grade.PRSGId}`] || ''}
+                            value={item[`grade_${grade.PRSGId}`] !== undefined && item[`grade_${grade.PRSGId}`] !== null ? String(item[`grade_${grade.PRSGId}`]) : ''}
                             keyboardType="numeric"
                             editable={grade.cartons != null && Number(grade.cartons) > 0}
                         />

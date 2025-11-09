@@ -2,10 +2,10 @@ import React from 'react';
 import { TouchableOpacity, StyleSheet } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { TabBarIcon } from '@/components/ThemedIcon';
-import { navigateBackWithFlow } from '@/utils/navigationHelper';
 import axiosInstance from '@/utils/axiosInstance';
 import { showWarning } from '@/utils/alertHelper';
 import { useSelector } from '@/store';
+import { navigateBackWithFlow } from '@/utils/navigationHelper';
 
 interface ThemedBackButtonProps {
   onPress?: () => void;
@@ -66,8 +66,8 @@ const ThemedBackButton: React.FC<ThemedBackButtonProps> = ({
       }
     }
 
-    // Navigate back
-    navigateBackWithFlow(pathname);
+    // Navigate back using logical flow instead of raw history
+    navigateBackWithFlow(pathname || '');
   };
 
   return (

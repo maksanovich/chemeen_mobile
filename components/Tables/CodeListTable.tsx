@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import {
+    ScrollView,
     StyleSheet,
     TouchableOpacity,
     Dimensions,
@@ -52,9 +53,6 @@ const CodeListTable: React.FC<CodeListProps> = ({ editable }) => {
                 try {
                     const response = await axiosInstance.get(`product/codeList/pi/${selectedPI.PIId}`);
                     setItems(response.data);
-                    
-                    // Validate carton totals against product requirements (show warning when opening page)
-                    await validateCartonTotals(response.data);
                 } catch (error) {
                     console.error('Error fetching code list data:', error);
                 } finally {
@@ -72,23 +70,23 @@ const CodeListTable: React.FC<CodeListProps> = ({ editable }) => {
             // Get product requirements
             const productResponse = await axiosInstance.get(`product/item/merged/${selectedPI.PIId}`);
             const productData = productResponse.data;
-            
+
             // Check for mismatches
             const mismatches: string[] = [];
-            
+
             productData.forEach((product: any) => {
                 const productTotal = parseFloat(product.totalCarton) || 0;
                 const codeListTotal = codeListData
                     .filter((code: any) => code.ItemId === product.ItemId)
                     .reduce((sum: number, code: any) => sum + (parseFloat(code.total) || 0), 0);
-                
+
                 if (Math.abs(productTotal - codeListTotal) > 0.01) {
                     mismatches.push(
                         `• ${product.productCode}\n  Required: ${productTotal} cartons\n  Available: ${codeListTotal} cartons`
                     );
                 }
             });
-            
+
             if (mismatches.length > 0) {
                 showCartonMismatchWarning(
                     mismatches,
@@ -111,7 +109,7 @@ const CodeListTable: React.FC<CodeListProps> = ({ editable }) => {
         if (itemToRemove) {
             try {
                 await axiosInstance.delete(`product/codeList/${selectedPI.PIId}?itemId=${itemToRemove.ItemId}&&code=${itemToRemove.code}`);
-                
+
                 // Refresh data from database after successful deletion
                 const response = await axiosInstance.get(`product/codeList/pi/${selectedPI.PIId}`);
                 setItems(response.data);
@@ -129,7 +127,7 @@ const CodeListTable: React.FC<CodeListProps> = ({ editable }) => {
         }
     };
 
-    const renderItem = async ({ item, index }: { item: any; index: number }) => (
+    const renderItem = ({ item, index }: { item: any; index: number }) => (
         <ThemedView style={styles.itemRow} key={index}>
             <TouchableOpacity onPress={() => handleRemove(index)} style={[styles.removeBtn, !editable && styles.hidden]}>
                 <TabBarIcon name="trash" color="#c15153" />
@@ -193,16 +191,18 @@ const CodeListTable: React.FC<CodeListProps> = ({ editable }) => {
                 <ThemedText style={[styles.headerCell, styles.gradesHeader]}>Grades</ThemedText>
                 <ThemedText style={[styles.headerCell, styles.totalCell]}>Total</ThemedText>
             </ThemedView>
+            <ScrollView>
+                {loading ? (
+                    <ThemedText style={styles.loadingText}>Loading code list...</ThemedText>
+                ) : items.length > 0 ? (
+                    items.map((item, index) => {
+                        return renderItem({ item, index })
+                    })
+                ) : (
+                    <ThemedText style={styles.noDataText}>No code list found</ThemedText>
+                )}
+            </ScrollView>
 
-            {loading ? (
-                <ThemedText style={styles.loadingText}>Loading code list...</ThemedText>
-            ) : items.length > 0 ? (
-                items.map((item, index) => {
-                    return renderItem({ item, index })
-                })
-            ) : (
-                <ThemedText style={styles.noDataText}>No code list found</ThemedText>
-            )}
         </ThemedView>
     );
 };

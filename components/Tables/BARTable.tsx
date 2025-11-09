@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { TextInput, StyleSheet, TouchableOpacity } from 'react-native';
+import { TextInput, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 
 import { ThemedView } from '@/components/ThemedView';
@@ -9,10 +9,10 @@ import { TabBarIcon } from '@/components/ThemedIcon';
 import { ThemedPicker } from '@/components/ThemedPicker';
 
 import axiosInstance from '@/utils/axiosInstance';
-import { 
-    showSuccessToast, 
-    showError, 
-    showWarning, 
+import {
+    showSuccessToast,
+    showError,
+    showWarning,
     showDateValidationError,
     showInfo
 } from '@/utils/alertHelper';
@@ -62,7 +62,7 @@ const BARTable: React.FC<BARProps> = ({ editable }) => {
     const [items, setItems] = useState<IBAR[]>([]);
     const [codes, setCodes] = useState<any[]>([]);
     const [data, setData] = useState<any[]>([]);
-    const [productCodeOptions, setProductCodeOptions] = useState<{[key: number]: any[]}>({});
+    const [productCodeOptions, setProductCodeOptions] = useState<{ [key: number]: any[] }>({});
     const [loading, setLoading] = useState<boolean>(false);
     const [traceabilityData, setTraceabilityData] = useState<any[]>([]); // Store traceability data for date validation
 
@@ -75,7 +75,7 @@ const BARTable: React.FC<BARProps> = ({ editable }) => {
                     // Fetch existing BAR data
                     const barResponse = await axiosInstance.get(`product/bar/${selectedPI.PIId}`);
                     setItems(barResponse.data || []);
-                    
+
                     // Fetch traceability data for date validation
                     try {
                         const traceResponse = await axiosInstance.get(`product/traceAbility?type=formatted&PIId=${selectedPI.PIId}`);
@@ -120,7 +120,7 @@ const BARTable: React.FC<BARProps> = ({ editable }) => {
             const uniqueCodes = Array.from(
                 new Map(response.data.map((item: any) => [item.code, item])).values()
             );
-            
+
             setData(response.data)
             const tempCodes = uniqueCodes.map((item: any) => ({
                 label: item.code,
@@ -141,14 +141,14 @@ const BARTable: React.FC<BARProps> = ({ editable }) => {
 
         // Find the corresponding traceability record for this code
         const traceRecord = traceabilityData.find(trace => trace.code === code);
-        
+
         if (!traceRecord || !traceRecord.productDate) {
             return { isValid: true, message: '' }; // No traceability data found, allow
         }
 
         const productionDate = new Date(traceRecord.productDate);
         const analysisDateObj = new Date(analysisDate);
-        
+
         // Check if analysis date is before production date
         if (analysisDateObj < productionDate) {
             return {
@@ -160,7 +160,7 @@ const BARTable: React.FC<BARProps> = ({ editable }) => {
         // Check if analysis date is more than 24 hours after production date
         const timeDiff = analysisDateObj.getTime() - productionDate.getTime();
         const hoursDiff = timeDiff / (1000 * 60 * 60);
-        
+
         if (hoursDiff > 24) {
             return {
                 isValid: false,
@@ -179,7 +179,7 @@ const BARTable: React.FC<BARProps> = ({ editable }) => {
 
         const analysisDateObj = new Date(analysisDate);
         const completionDateObj = new Date(completionDate);
-        
+
         // Check if completion date is before analysis date
         if (completionDateObj < analysisDateObj) {
             return {
@@ -188,14 +188,18 @@ const BARTable: React.FC<BARProps> = ({ editable }) => {
             };
         }
 
-        // Check if completion date is more than 24 hours after analysis date
-        const timeDiff = completionDateObj.getTime() - analysisDateObj.getTime();
-        const hoursDiff = timeDiff / (1000 * 60 * 60);
-        
-        if (hoursDiff > 24) {
+        // Check if completion date is more than 6 days after analysis date
+        // Calculate difference in days (including weekends)
+        // Normalize dates to midnight for accurate day-based comparison
+        const analysisDateNormalized = new Date(analysisDateObj.getFullYear(), analysisDateObj.getMonth(), analysisDateObj.getDate());
+        const completionDateNormalized = new Date(completionDateObj.getFullYear(), completionDateObj.getMonth(), completionDateObj.getDate());
+        const timeDiff = completionDateNormalized.getTime() - analysisDateNormalized.getTime();
+        const daysDiff = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
+
+        if (daysDiff > 6) {
             return {
                 isValid: false,
-                message: `⏰ Completion Date must be within 24 hours of Analysis Date\n\nAnalysis: ${analysisDate}\nCompletion: ${completionDate}\nGap: ${Math.round(hoursDiff)} hours\nMax allowed: 24 hours`
+                message: `⏰ Completion Date must be within 6 days of Analysis Date\n\nAnalysis: ${analysisDate}\nCompletion: ${completionDate}\nGap: ${daysDiff} days\nMax allowed: 6 days`
             };
         }
 
@@ -208,7 +212,7 @@ const BARTable: React.FC<BARProps> = ({ editable }) => {
 
     const handleRemove = useCallback(async (index: number) => {
         const itemToRemove = items[index];
-        
+
         // If the item has a BARId, delete it from the database
         if (itemToRemove.BARId && itemToRemove.BARId !== '') {
             try {
@@ -219,12 +223,12 @@ const BARTable: React.FC<BARProps> = ({ editable }) => {
                 return; // Don't remove from UI if database deletion failed
             }
         }
-        
+
         setItems((prevItems) => prevItems.filter((_, i) => i !== index));
-        
+
         // Clean up product code options for removed row and reindex remaining rows
         setProductCodeOptions(prev => {
-            const newOptions: {[key: number]: any[]} = {};
+            const newOptions: { [key: number]: any[] } = {};
             Object.keys(prev).forEach(key => {
                 const keyIndex = parseInt(key);
                 if (keyIndex < index) {
@@ -241,19 +245,19 @@ const BARTable: React.FC<BARProps> = ({ editable }) => {
     const handleChange = async (value: string, index: number, field: keyof IBAR) => {
         // Store the original item before any changes
         const originalItem = { ...items[index] };
-        
+
         // Check for duplicate codes when changing the code field
         if (field === 'code' && value && value.trim() !== '') {
-            const duplicateIndex = items.findIndex((item, idx) => 
+            const duplicateIndex = items.findIndex((item, idx) =>
                 idx !== index && item.code && item.code.trim() === value.trim()
             );
-            
+
             if (duplicateIndex !== -1) {
                 showError(
                     '❌ Duplicate Code Error',
                     `Code "${value}" already exists in row ${duplicateIndex + 1}.\n\nEach code can only have one BAR record.`
                 );
-                
+
                 // Revert the code field to its original value to prevent UI update
                 const updatedItems = [...items];
                 updatedItems[index] = {
@@ -269,7 +273,7 @@ const BARTable: React.FC<BARProps> = ({ editable }) => {
         if (field === 'analysisDate' && value) {
             const currentItem = items[index];
             const validation = validateAnalysisDate(currentItem.code, value);
-            
+
             if (!validation.isValid) {
                 showError(
                     '📅 Date Validation Error',
@@ -283,24 +287,27 @@ const BARTable: React.FC<BARProps> = ({ editable }) => {
         if (field === 'completionDate' && value) {
             const currentItem = items[index];
             const validation = validateCompletionDate(currentItem.analysisDate, value);
-            
+
             if (!validation.isValid) {
                 // Extract details from the validation message for better formatting
                 const analysisDate = currentItem.analysisDate;
                 const completionDate = value;
                 const analysisDateObj = new Date(analysisDate);
                 const completionDateObj = new Date(completionDate);
-                const timeDiff = completionDateObj.getTime() - analysisDateObj.getTime();
-                const hoursDiff = Math.round(timeDiff / (1000 * 60 * 60));
-                
+                // Normalize dates to midnight for accurate day-based comparison
+                const analysisDateNormalized = new Date(analysisDateObj.getFullYear(), analysisDateObj.getMonth(), analysisDateObj.getDate());
+                const completionDateNormalized = new Date(completionDateObj.getFullYear(), completionDateObj.getMonth(), completionDateObj.getDate());
+                const timeDiff = completionDateNormalized.getTime() - analysisDateNormalized.getTime();
+                const daysDiff = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
+
                 showDateValidationError(
                     'Date Validation Error',
-                    '⏰ Completion Date must be within 24 hours of Analysis Date',
+                    '⏰ Completion Date must be within 6 days of Analysis Date',
                     {
                         analysisDate: analysisDate,
                         completionDate: completionDate,
-                        gap: `${hoursDiff} hours`,
-                        maxAllowed: '24 hours'
+                        gap: `${daysDiff} days`,
+                        maxAllowed: '6 days'
                     }
                 );
                 return; // Don't update the value
@@ -347,7 +354,7 @@ const BARTable: React.FC<BARProps> = ({ editable }) => {
         // Check for duplicate codes before saving
         const codes = items.map(item => item.code).filter(code => code && code.trim() !== '');
         const uniqueCodes = [...new Set(codes)];
-        
+
         if (codes.length !== uniqueCodes.length) {
             showError(
                 '❌ Duplicate Code Error',
@@ -379,17 +386,20 @@ const BARTable: React.FC<BARProps> = ({ editable }) => {
                 if (!validation.isValid) {
                     const analysisDateObj = new Date(item.analysisDate);
                     const completionDateObj = new Date(item.completionDate);
-                    const timeDiff = completionDateObj.getTime() - analysisDateObj.getTime();
-                    const hoursDiff = Math.round(timeDiff / (1000 * 60 * 60));
-                    
+                    // Normalize dates to midnight for accurate day-based comparison
+                    const analysisDateNormalized = new Date(analysisDateObj.getFullYear(), analysisDateObj.getMonth(), analysisDateObj.getDate());
+                    const completionDateNormalized = new Date(completionDateObj.getFullYear(), completionDateObj.getMonth(), completionDateObj.getDate());
+                    const timeDiff = completionDateNormalized.getTime() - analysisDateNormalized.getTime();
+                    const daysDiff = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
+
                     showDateValidationError(
                         'Date Validation Error',
-                        `Row ${i + 1}: ⏰ Completion Date must be within 24 hours of Analysis Date`,
+                        `Row ${i + 1}: ⏰ Completion Date must be within 6 days of Analysis Date`,
                         {
                             analysisDate: item.analysisDate,
                             completionDate: item.completionDate,
-                            gap: `${hoursDiff} hours`,
-                            maxAllowed: '24 hours'
+                            gap: `${daysDiff} days`,
+                            maxAllowed: '6 days'
                         }
                     );
                     return;
@@ -532,24 +542,25 @@ const BARTable: React.FC<BARProps> = ({ editable }) => {
                 <ThemedText style={[styles.removeBtn, !editable && styles.hidden]}></ThemedText>
                 <ThemedText style={[styles.headerCell, { width: 180 }]}>Code</ThemedText>
                 <ThemedText style={[styles.headerCell, { width: 150 }]}>Product Code</ThemedText>
-                <ThemedText style={styles.headerCell}>Analysis Date</ThemedText>
-                <ThemedText style={styles.headerCell}>Completion Date</ThemedText>
-                <ThemedText style={styles.headerCell}>Total Plate Count CFU/GM</ThemedText>
-                <ThemedText style={styles.headerCell}>E.coli C.F.U /gm</ThemedText>
-                <ThemedText style={styles.headerCell}>S. aureus C.F.U /gm</ThemedText>
-                <ThemedText style={styles.headerCell}>Salmonella / 25gm</ThemedText>
-                <ThemedText style={styles.headerCell}>Vibrio cholera / 25gm</ThemedText>
-                <ThemedText style={styles.headerCell}>Vibrio Parahaemolyticus / 25gm</ThemedText>
-                <ThemedText style={styles.headerCell}>Listeria monocytogenes / 25gm</ThemedText>
+                <ThemedText style={styles.headerCell}>Date of Analysis</ThemedText>
+                <ThemedText style={styles.headerCell}>Date of Completion</ThemedText>
+                <ThemedText style={styles.headerCell}>Total plate count/gm at 37°C</ThemedText>
+                <ThemedText style={styles.headerCell}>E. coli C.F.U/gm</ThemedText>
+                <ThemedText style={styles.headerCell}>S. aureus C.F.U/gm</ThemedText>
+                <ThemedText style={styles.headerCell}>Salmonella / 25 gm</ThemedText>
+                <ThemedText style={styles.headerCell}>Vibrio cholera / 25 gm</ThemedText>
+                <ThemedText style={styles.headerCell}>Vibrio Parahae molyticus / 25 gm</ThemedText>
+                <ThemedText style={styles.headerCell}>Listeria monocytogenes 25/GM</ThemedText>
             </ThemedView>
-
-            {loading ? (
-                <ThemedText style={styles.loadingText}>Loading BAR data...</ThemedText>
-            ) : items.length > 0 ? (
-                items.map((item, index) => renderItem({ item, index }))
-            ) : (
-                <ThemedText style={styles.noDataText}>No BAR data found</ThemedText>
-            )}
+            <ScrollView>
+                {loading ? (
+                    <ThemedText style={styles.loadingText}>Loading BAR data...</ThemedText>
+                ) : items.length > 0 ? (
+                    items.map((item, index) => renderItem({ item, index }))
+                ) : (
+                    <ThemedText style={styles.noDataText}>No BAR data found</ThemedText>
+                )}
+            </ScrollView>
         </ThemedView>
     );
 };
