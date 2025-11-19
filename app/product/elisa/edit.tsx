@@ -111,6 +111,30 @@ export default function ELISAEditScreen() {
         setTimeout(() => uploadFile(fileId), 100);
     };
 
+    const MAX_UPLOAD_RETRIES = 2;
+
+    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    const uploadWithRetry = async (formData: FormData) => {
+        let attempt = 0;
+        while (attempt < MAX_UPLOAD_RETRIES) {
+            try {
+                return await axiosInstance.post('product/elisa/upload-pdf', formData, {
+                    headers: {
+                        'Content-Type': 'multipart/form-data',
+                    },
+                });
+            } catch (error: any) {
+                const isNetworkError = !error.response;
+                attempt += 1;
+                if (!isNetworkError || attempt >= MAX_UPLOAD_RETRIES) {
+                    throw error;
+                }
+                await sleep(1000);
+            }
+        }
+    };
+
     // Upload individual file
     const uploadFile = async (fileId: string) => {
         setFiles(prevFiles => {
@@ -142,8 +166,8 @@ export default function ELISAEditScreen() {
                     
                     // Append additional data
                     formData.append('pdfName', file.name.replace(/\.[^/.]+$/, ''));
-                    formData.append('PIId', selectedPI.PIId);
-                    formData.append('PINo', selectedPI.PI.PINo);
+                    formData.append('PIId', String(selectedPI.PIId));
+                    formData.append('PINo', String(selectedPI.PI?.PINo || ''));
 
                     // Simulate progress (since axios doesn't provide upload progress easily on React Native)
                     progressInterval = setInterval(() => {
@@ -155,12 +179,8 @@ export default function ELISAEditScreen() {
                         }));
                     }, 200);
 
-                    // Upload using axiosInstance
-                    await axiosInstance.post('product/elisa/upload-pdf', formData, {
-                        headers: {
-                            'Content-Type': 'multipart/form-data',
-                        },
-                    });
+                    // Upload using axiosInstance with retry for transient failures
+                    await uploadWithRetry(formData);
 
                     if (progressInterval) clearInterval(progressInterval);
 
@@ -179,6 +199,8 @@ export default function ELISAEditScreen() {
                         errorMessage = error.response.data.message;
                     } else if (error.response?.status === 400) {
                         errorMessage = 'File too large or invalid format.';
+                    } else if (!error.response) {
+                        errorMessage = 'Unable to reach the server. Please check your connection and try again.';
                     }
                     
                     showError('Upload Error', errorMessage);
