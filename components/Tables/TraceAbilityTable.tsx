@@ -117,7 +117,7 @@ const TraceAbilityTable: React.FC<TraceAbilityProps> = ({ editable }) => {
             // Only update the item at the specified index
             if (field === 'productDate') {
                 const parsedDate = new Date(value);
-                parsedDate.setDate(parsedDate.getDate() - 1);
+                parsedDate.setFullYear(parsedDate.getFullYear() + 2);
 
                 // Create a new object with updated fields for the changed item only
                 updatedItems[index] = {
@@ -354,12 +354,12 @@ const TraceAbilityTable: React.FC<TraceAbilityProps> = ({ editable }) => {
                 <ThemedText style={styles.headerCell}>Raw Material Qty</ThemedText>
                 <ThemedText style={styles.headerCell}>Headless Qty</ThemedText>
                 <ThemedText style={styles.headerCell}>Code</ThemedText>
-                <ThemedText style={styles.productCodeHeader}>Product Code</ThemedText>
+                <ThemedText style={styles.productCodeHeader}>Product Description</ThemedText>
                 <ThemedText style={styles.headerCell}>Total</ThemedText>
                 <ThemedText style={styles.headerCell}>Used Case</ThemedText>
                 <ThemedText style={styles.headerCell}>Balance Case (Manual)</ThemedText>
-                <ThemedText style={styles.headerCell}>Farm</ThemedText>
-                <ThemedText style={styles.headerCell}>Before Date</ThemedText>
+                <ThemedText style={styles.headerCell}>Traceability</ThemedText>
+                <ThemedText style={styles.headerCell}>Best Before Date</ThemedText>
             </ThemedView>
             <ScrollView>
                 {loading ? (

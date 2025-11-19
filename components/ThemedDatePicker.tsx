@@ -51,7 +51,14 @@ export function ThemedDatePicker(props: any) {
         return `${year}-${month}-${day}`;
     };
 
-    const formattedDate = selectedDate ? formatDate(selectedDate) : "Select Date";
+    const displayFormart = (date: Date) => {
+        const month = (date.getMonth() + 1).toString().padStart(2, "0");
+        const day = date.getDate().toString().padStart(2, "0");
+        const year = date.getFullYear();
+        return `${day}-${month}-${year}`;
+    };
+
+    const formattedDate = selectedDate ? displayFormart(selectedDate) : "Select Date";
 
     return (
         <ThemedView style={styles.container}>
