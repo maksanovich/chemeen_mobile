@@ -352,7 +352,7 @@
                     </ThemedView>
                     <ThemedView style={styles.content}>
                         <ThemedText style={styles.header}>PI No - {item.No}/{item.PIDate}</ThemedText>
-                        <ThemedText style={styles.country}>{item.country}</ThemedText>
+                        <ThemedText style={styles.country}>{item.country} : {item.consigneeName}</ThemedText>
                         <ThemedText style={styles.date}>{item.shipDate}</ThemedText>
                     </ThemedView>
                     <ThemedView style={styles.absoluteView}>

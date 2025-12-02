@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html>
+<head>
+</head>
+<body>
+    <div id="count"></div>
+</body>
+<script>
+    document.getElementById("count").innerText = 5;
+
+    let FirstBatch = 7;
+    let SecondBatch = 8;
+    let count = FirstBatch + SecondBatch;
+    console.log(count);
+
+    let MyAge = 25;
+    let humanDogRatio = 7
+    let MyDogAge = MyAge * humanDogRatio;
+
+    console.log(MyDogAge);
+
+    let bonusPoints = 50;
+    console.log(bonusPoints);
+
+    bonusPoints = bonusPoints + 50;
+    console.log(bonusPoints);
+
+    bonusPoints = bonusPoints - 75;
+    console.log(bonusPoints);
+
+    bonusPoints = bonusPoints + 45;
+    console.log(bonusPoints);
+
+
+    function Countdown() {
+        console.log(5);
+        console.log(4);
+        console.log(3);
+        console.log(2);
+        console.log(1);
+    }
+
+    Countdown();
+
+    function Exercise() {
+        console.log(42);
+    }
+    Exercise();
+
+    let lap1 = 34;
+    let lap2 = 33;
+    let lap3 = 36;
+    function TotalLapTime() {
+        let totalTime = lap1 + lap2 + lap3;
+        console.log(totalTime);
+    }
+    TotalLapTime();
+
+    let lapsCompleted = 0;
+
+    function incrementlap() {
+        lapsCompleted = lapsCompleted + 1;
+    }
+    incrementlap();
+    incrementlap();
+    incrementlap(); 
+    console.log(lapsCompleted);
+
+    function Increment() {
+        console.log("The button was clicked");
+    }
+
+
+    let username = "perrytheplatypus";
+    let message = "You have three new notifications, ";
+
+    let messageToUser = message + ", "+ username + "!"    ;
+    console.log(messageToUser);
+
+    let name = "william";
+    let greeting = "Hi, my name is " ;
+
+    Let myGreeting = greeting + name + "." ;
+    console.log(myGreeting);
+
+
+
+    let countEl = document.getElementById("count-el");
+    console.log(countEl);
+
+    let count = 0;
+    function Increment() {
+        count = count + 1
+        countEl.innerText = count
+    };
+
+    function save() {
+        console.log(count)
+    }
+
+</script>
+</html>

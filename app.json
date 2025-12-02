@@ -3,7 +3,7 @@
     "name": "Chemeen",
     "slug": "chemeen",
     "version": "2.1.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "chemeen",
     "userInterfaceStyle": "automatic",

@@ -48,7 +48,8 @@ export const getPIList = (params: any[]) => {
             No: item.PINo,
             PIDate: item.PIDate,
             shipDate: item.shipDate,
-            country: item.loadingPortCountry
+            country: item.loadingPortCountry,
+            consigneeName: item.consigneeName,
         };
     });
 }
